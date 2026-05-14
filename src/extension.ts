@@ -89,10 +89,18 @@ interface ModelListResponse {
 
 interface ApiMessage {
   role: ApiRole;
-  content: string | null;
+  content: string | null | OpenAiContentPart[];
   reasoning_content?: string;
   tool_call_id?: string;
   tool_calls?: OpenAiToolCall[];
+}
+
+interface OpenAiContentPart {
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: {
+    url: string;
+  };
 }
 
 interface OpenAiToolCall {
@@ -177,6 +185,22 @@ type CopilotCompatibleCapabilities = vscode.LanguageModelChatCapabilities & {
   supportsToolCalling: boolean;
   supportsImageToText: boolean;
 };
+
+const VISION_CAPABLE_MODELS = new Set([
+  "minimax-m2.7",
+  "minimax-m2.5",
+  "minimax-m2.5-free",
+  "kimi-k2.6",
+  "kimi-k2.5",
+  "glm-5.1",
+  "glm-5",
+  "mimo-v2.5",
+  "mimo-v2.5-pro",
+  "mimo-v2-omni",
+  "mimo-v2-pro",
+  "qwen3.6-plus",
+  "qwen3.5-plus"
+]);
 
 interface OpenAiToolDefinition {
   type: "function";
@@ -408,7 +432,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
         isUserSelectable: true,
         maxInputTokens: limits.advertisedMaxInputTokens,
         maxOutputTokens: limits.advertisedMaxOutputTokens,
-        capabilities: modelCapabilities(),
+        capabilities: modelCapabilities(modelId),
         endpointKind: modelEndpointKind(modelId, this.definition),
         provider: this.definition
       };
@@ -707,6 +731,7 @@ function convertMessage(
 ): ApiMessage[] {
   const role = message.role === vscode.LanguageModelChatMessageRole.Assistant ? "assistant" : "user";
   const textParts: string[] = [];
+  const imageParts: OpenAiContentPart[] = [];
   const toolCalls: OpenAiToolCall[] = [];
   const toolResults: ApiMessage[] = [];
 
@@ -732,18 +757,39 @@ function convertMessage(
       continue;
     }
 
+    if (part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith("image/")) {
+      const base64 = btoa(String.fromCodePoint(...part.data));
+      imageParts.push({
+        type: "image_url",
+        image_url: { url: `data:${part.mimeType};base64,${base64}` }
+      });
+      continue;
+    }
+
     const text = partToText(part);
     if (text) {
       textParts.push(text);
     }
   }
 
-  const content = textParts.join("\n");
+  // Build content: use multimodal array if images present, otherwise plain string
+  const hasImages = imageParts.length > 0;
+  const textContent = textParts.join("\n");
+
+  let content: string | null | OpenAiContentPart[] = textContent;
+  if (hasImages) {
+    const multimodal: OpenAiContentPart[] = [];
+    if (textContent) {
+      multimodal.push({ type: "text", text: textContent });
+    }
+    multimodal.push(...imageParts);
+    content = multimodal;
+  }
 
   if (role === "assistant" && toolCalls.length) {
     return [{
       role,
-      content: content || null,
+      content: typeof content === "string" ? content || null : content,
       reasoning_content: reasoningForToolCalls(toolCalls, reasoningContentByToolCallId),
       tool_calls: toolCalls
     }];
@@ -800,8 +846,20 @@ function normalizeMessages(messages: ApiMessage[]): ApiMessage[] {
     }
 
     const previous = normalized.at(-1);
-    if (previous?.role === message.role && message.role !== "tool" && !previous.tool_calls && !message.tool_calls) {
-      previous.content = `${previous.content ?? ""}\n\n${message.content ?? ""}`.trim();
+    const prevContent = previous?.content;
+    const msgContent = message.content;
+    const prevIsString = typeof prevContent === "string";
+    const msgIsString = typeof msgContent === "string";
+    const prevHasToolCalls = !!(previous?.tool_calls?.length || previous?.tool_call_id);
+    const msgHasToolCalls = !!(message.tool_calls?.length || message.tool_call_id);
+
+    if (
+      previous?.role === message.role
+      && message.role !== "tool"
+      && prevIsString && msgIsString
+      && !prevHasToolCalls && !msgHasToolCalls
+    ) {
+      previous.content = `${prevContent ?? ""}\n\n${msgContent ?? ""}`.trim();
     } else {
       normalized.push({ ...message });
     }
@@ -818,11 +876,19 @@ function normalizeMessages(messages: ApiMessage[]): ApiMessage[] {
 }
 
 function hasMessagePayload(message: ApiMessage): boolean {
-  return Boolean(
-    (typeof message.content === "string" && message.content.trim())
-    || message.tool_calls?.length
-    || message.tool_call_id
-  );
+  if (message.tool_calls?.length || message.tool_call_id) {
+    return true;
+  }
+
+  if (typeof message.content === "string") {
+    return message.content.trim().length > 0;
+  }
+
+  if (Array.isArray(message.content)) {
+    return message.content.length > 0;
+  }
+
+  return false;
 }
 
 class OpenAiResponseExtractor {
@@ -1048,11 +1114,12 @@ function positiveOverride(value: number): number | undefined {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
 }
 
-function modelCapabilities(): CopilotCompatibleCapabilities {
+function modelCapabilities(modelId: string): CopilotCompatibleCapabilities {
+  const supportsVision = VISION_CAPABLE_MODELS.has(modelId);
   return {
-    imageInput: false,
+    imageInput: supportsVision,
     toolCalling: 128,
-    supportsImageToText: false,
+    supportsImageToText: supportsVision,
     supportsToolCalling: true
   };
 }
