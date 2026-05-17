@@ -24,7 +24,7 @@ This lets you pick and use OpenCode models directly from the Copilot Chat model 
 ## ✨ Features
 
 - **BYOK** — configure OpenCode Go and OpenCode Zen independently with separate API keys, both active at the same time
-- **Live model list** — fetches available Go models and Zen free models directly from OpenCode on every startup
+- **Live model list** — fetches available Go models and Zen models directly from OpenCode on every startup
 - **Bundled fallback** — works offline or if the API is unreachable, using a curated model table with accurate token limits
 - **Per-model token limits** — precise context window and max output token values per model, not a single global cap
 - **Tool-calling support** — forwards tool schemas using OpenAI-compatible or Anthropic-compatible request shapes automatically based on the model endpoint
@@ -72,7 +72,7 @@ For advanced usage, you can also run these commands via the Command Palette (`Cm
 | `OpenCode Go: Manage Provider` | Manage legacy fallback API key, refresh models, or test connection |
 | `OpenCode Go: Set API Key` | Store or update a legacy fallback OpenCode Go API key |
 | `OpenCode Go: Diagnostics` | Show a markdown report of all registered OpenCode Go models |
-| `OpenCode Zen: Diagnostics` | Show a markdown report of all registered OpenCode Zen free models |
+| `OpenCode Zen: Diagnostics` | Show a markdown report of all registered OpenCode Zen models |
 
 > **Note:** The native BYOK flow via **Language Models** (gear icon ⚙) is recommended. VS Code will ask for a group name, then the matching API key. Go and Zen are separate provider groups, so both can be active at the same time.
 
@@ -86,6 +86,7 @@ For advanced usage, you can also run these commands via the Command Palette (`Cm
 | `opencodego.maxTokens` | `number` | `0` | Max output token override — `0` uses the per-model bundled maximum |
 | `opencodego.maxInputTokens` | `number` | `0` | Context window override — `0` uses the per-model bundled context size |
 | `opencodego.debugReasoning` | `boolean` | `false` | Write provider `reasoning_content` to **Output → OpenCode** for debugging |
+| `opencodego.freeOnly`      | `boolean` | `true`  | Limit OpenCode Zen to free models only. Disable to include paid Zen models in the picker |
 
 ---
 
@@ -98,7 +99,7 @@ https://opencode.ai/zen/go/v1/models   (OpenCode Go — paid)
 https://opencode.ai/zen/v1/models       (OpenCode Zen — free)
 ```
 
-The **Go provider** exposes all OpenCode Go models. The **Zen provider** filters the live Zen list to free chat-completions-compatible models (`*-free` plus `big-pickle`) so paid Zen models do not appear unless support is added intentionally.
+The **Go provider** exposes all OpenCode Go models. The **Zen provider** filters the live Zen list to free chat-completions-compatible models (`*-free` plus `big-pickle`) by default. Set `opencodego.freeOnly` to `false` to include paid Zen models in the picker.
 
 Because the endpoints return model IDs only, a bundled metadata table provides context window and max output tokens per model. Deprecated or known-unavailable models are filtered using the models.dev registry plus a small local safety list, so stale free models do not remain visible just because OpenCode still returns them from `/models`. If the live fetch fails, the bundled list is used as a fallback.
 

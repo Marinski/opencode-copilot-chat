@@ -72,7 +72,7 @@ const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
       "qwen3.6-plus-free",
       "big-pickle"
     ],
-    filterModel: (modelId) => modelId.endsWith("-free") || FREE_ZEN_MODEL_IDS.has(modelId)
+    filterModel: (modelId) => vscode.workspace.getConfiguration("opencodego").get("freeOnly", true) ? modelId.endsWith("-free") || FREE_ZEN_MODEL_IDS.has(modelId) : true
   }
 };
 

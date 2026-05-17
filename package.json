@@ -90,6 +90,11 @@
           "type": "boolean",
           "default": false,
           "description": "Write provider reasoning_content to the OpenCode output channel for debugging. Reasoning is not shown in Copilot Chat."
+        },
+        "opencodego.freeOnly": {
+          "type": "boolean",
+          "default": true,
+          "description": "When enabled, only free OpenCode Zen models are shown in the Copilot model selector. Disable to include paid Zen models as well."
         }
       }
     },

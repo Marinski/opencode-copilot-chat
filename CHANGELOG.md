@@ -4,6 +4,10 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ## Unreleased
 
+### Added
+
+- Added `opencodego.freeOnly` to control whether the OpenCode Zen provider exposes only free models or the full Zen catalog.
+
 ### Fixed
 
 - Filter deprecated OpenCode models using the models.dev registry before registering them with VS Code, with a local safety list for free models that now return provider 404s (`ring-2.6-1t-free`, `trinity-large-preview-free`).
