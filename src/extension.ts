@@ -25,7 +25,7 @@ const KNOWN_UNAVAILABLE_MODEL_IDS = new Set([
   "trinity-large-preview-free"
 ]);
 // Bump this when we need to force VS Code picker metadata refresh.
-const MODEL_METADATA_REVISION = "naming-2026-05-17-a";
+const MODEL_METADATA_REVISION = "visionfix-2026-05-20-a";
 
 const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
   [GO_VENDOR]: {
@@ -236,17 +236,10 @@ const CAPACITY_LIMITED_MODEL_NOTES: Record<string, string> = {
 let deprecatedOpenCodeModelIdsPromise: Promise<Set<string>> | undefined;
 
 const VISION_CAPABLE_MODELS = new Set([
-  "minimax-m2.7",
-  "minimax-m2.5",
-  "minimax-m2.5-free",
   "kimi-k2.6",
   "kimi-k2.5",
-  "glm-5.1",
-  "glm-5",
   "mimo-v2.5",
-  "mimo-v2.5-pro",
   "mimo-v2-omni",
-  "mimo-v2-pro",
   "qwen3.6-plus",
   "qwen3.6-plus-free",
   "qwen3.5-plus"
@@ -604,9 +597,10 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       thinking: applyRequestThinkingOverride(rawModelId, baseSettings.thinking, requestOverride)
     };
     const limits = modelLimits(rawModelId, settings, model.provider.vendor);
-    const thinkingPayload = buildThinkingPayload(rawModelId, settings.thinking);
+    const hasImageInput = messagesHaveImages(apiMessages);
+    const thinkingPayload = buildThinkingPayload(rawModelId, settings.thinking, hasImageInput);
 
-    this.log(`Request: model=${model.id} rawModel=${rawModelId} endpoint=${model.endpointKind} messages=${apiMessages.length} modelConfiguration=${JSON.stringify(pickThinkingModelConfiguration(requestOverride))} thinking=${JSON.stringify(settings.thinking)} thinkingPayload=${JSON.stringify(thinkingPayload)}`);
+    this.log(`Request: model=${model.id} rawModel=${rawModelId} endpoint=${model.endpointKind} messages=${apiMessages.length} images=${hasImageInput ? "yes" : "no"} modelConfiguration=${JSON.stringify(pickThinkingModelConfiguration(requestOverride))} thinking=${JSON.stringify(settings.thinking)} thinkingPayload=${JSON.stringify(thinkingPayload)}`);
     if (settings.debugReasoning) {
       this.log("Reasoning debug is enabled. Provider reasoning_content will be written to this output channel when available.");
     }
@@ -773,7 +767,7 @@ async function streamChatCompletions(
   // Per-family Thinking controls. Replaces the previous hard-coded Qwen patch.
   // Default Qwen config is `off`, which preserves the prior behavior of
   // explicitly disabling hybrid thinking to avoid empty Copilot replies.
-  const thinkingPayload = buildThinkingPayload(modelId, settings.thinking);
+  const thinkingPayload = buildThinkingPayload(modelId, settings.thinking, messagesHaveImages(messages));
 
   await streamOpenCodeResponse(
     url,
@@ -826,7 +820,7 @@ async function streamChatCompletionsWithAnthropicStream(
   });
   const tools = mapOpenAiTools(options.tools);
   const anthropicExtractor = new AnthropicResponseExtractor();
-  const thinkingPayload = buildThinkingPayload(modelId, settings.thinking);
+  const thinkingPayload = buildThinkingPayload(modelId, settings.thinking, messagesHaveImages(messages));
 
   await streamOpenCodeResponse(
     url,
@@ -883,7 +877,7 @@ async function streamAnthropicMessages(
   // OpenAI-style enable_thinking / thinking_budget flags via the OpenCode
   // gateway. Apply the same per-family Thinking payload here so the picker
   // setting works regardless of which endpoint a model is routed to.
-  const thinkingPayload = buildThinkingPayload(modelId, settings.thinking);
+  const thinkingPayload = buildThinkingPayload(modelId, settings.thinking, messagesHaveImages(messages));
 
   await streamOpenCodeResponse(
     url,
@@ -1184,7 +1178,7 @@ function convertMessage(
     }
 
     if (part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith("image/")) {
-      const base64 = btoa(String.fromCodePoint(...part.data));
+      const base64 = dataPartToBase64(part.data);
       imageParts.push({
         type: "image_url",
         image_url: { url: `data:${part.mimeType};base64,${base64}` }
@@ -1226,6 +1220,10 @@ function convertMessage(
   }
 
   return [{ role, content }];
+}
+
+function dataPartToBase64(data: Uint8Array): string {
+  return Buffer.from(data).toString("base64");
 }
 
 function reasoningForToolCalls(
@@ -1299,6 +1297,13 @@ function normalizeMessages(messages: ApiMessage[]): ApiMessage[] {
   }
 
   return normalized.length ? normalized : [{ role: "user", content: "" }];
+}
+
+function messagesHaveImages(messages: readonly ApiMessage[]): boolean {
+  return messages.some((message) =>
+    Array.isArray(message.content)
+    && message.content.some((part) => part.type === "image_url")
+  );
 }
 
 function hasMessagePayload(message: ApiMessage): boolean {
@@ -1789,7 +1794,7 @@ function getSettings(): ApiSettings {
 // Maps the per-family Thinking settings to the request fields each OpenCode
 // model family expects. Returns an object to spread into the request body.
 // Anything returned here is merged into the OpenAI- or Anthropic-style payload.
-function buildThinkingPayload(modelId: string, thinking: ThinkingSettings): Record<string, unknown> {
+function buildThinkingPayload(modelId: string, thinking: ThinkingSettings, hasImageInput = false): Record<string, unknown> {
   if (/^deepseek-/i.test(modelId)) {
     if (thinking.deepseek === "off") {
       return {};
@@ -1808,7 +1813,12 @@ function buildThinkingPayload(modelId: string, thinking: ThinkingSettings): Reco
   if (/^qwen3(?:\.|-)/i.test(modelId)) {
     if (thinking.qwen === "auto") {
       // Let the model decide; don't send enable_thinking. Budget is only
-      // meaningful when thinking is active, so honor it here as well.
+      // meaningful when thinking is active, so honor it here as well. Vision
+      // requests are already token-heavy; keep "auto" truly automatic so the
+      // provider can stay under its image quota/token limits.
+      if (hasImageInput) {
+        return {};
+      }
       return thinking.qwenBudget === "auto"
         ? {}
         : { thinking_budget: Number(thinking.qwenBudget) };

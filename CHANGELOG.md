@@ -4,6 +4,14 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ## Unreleased
 
+## [0.1.5] — 2026-05-20
+
+### Fixed
+
+- Fixed vision requests with image attachments failing before upload due to stack overflow while encoding image bytes.
+- Avoid forcing Qwen `thinking_budget` on vision requests when Thinking is set to Auto, reducing image request token pressure from Alibaba-backed models.
+- Stopped advertising image input support for models that do not support image attachments in OpenCode metadata: `glm-5`, `glm-5.1`, `minimax-m2.5`, `minimax-m2.7`, `minimax-m2.5-free`, `mimo-v2-pro`, and `mimo-v2.5-pro`.
+
 ## [0.1.4] — 2026-05-17
 
 ### Added
