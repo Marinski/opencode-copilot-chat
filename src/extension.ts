@@ -11,6 +11,7 @@ interface ProviderDefinition {
   modelsUrl: string;
   chatCompletionsUrl: string;
   messagesUrl: string;
+  responsesUrl?: string;
   categoryOrder: number;
   testModelId: string;
   fallbackModels: string[];
@@ -29,7 +30,7 @@ const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 const OPEN_CODE_CLIENT = "vscode-copilot-chat";
 const OPEN_CODE_USER_AGENT = "opencode-copilot-chat/0.1.6 VSCode";
 // Bump this when we need to force VS Code picker metadata refresh.
-const MODEL_METADATA_REVISION = "naming-2026-05-17-a";
+const MODEL_METADATA_REVISION = "session-2026-05-21-b";
 
 const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
   [GO_VENDOR]: {
@@ -67,6 +68,7 @@ const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
     modelsUrl: "https://opencode.ai/zen/v1/models",
     chatCompletionsUrl: "https://opencode.ai/zen/v1/chat/completions",
     messagesUrl: "https://opencode.ai/zen/v1/messages",
+    responsesUrl: "https://opencode.ai/zen/v1/responses",
     categoryOrder: 3,
     testModelId: "deepseek-v4-flash-free",
     fallbackModels: [
@@ -94,19 +96,54 @@ interface OpenCodeModel extends vscode.LanguageModelChatInformation {
   configurationSchema?: vscode.LanguageModelConfigurationSchema;
 }
 
+interface ModelListEntry {
+  id?: string;
+  owned_by?: string;
+  status?: string;
+  deprecated?: boolean;
+  limit?: {
+    context?: number;
+    output?: number;
+  };
+  context_window?: number;
+  contextWindow?: number;
+  max_output_tokens?: number;
+  maxOutputTokens?: number;
+  attachment?: boolean;
+  image_input?: boolean;
+  imageInput?: boolean;
+  reasoning?: boolean;
+  modalities?: {
+    input?: string[];
+    output?: string[];
+  };
+}
+
 interface ModelListResponse {
-  data?: Array<{
-    id?: string;
-    owned_by?: string;
-  }>;
+  data?: ModelListEntry[];
+}
+
+interface ModelsDevModelRecord {
+  status?: string;
+  limit?: {
+    context?: number;
+    output?: number;
+  };
+  attachment?: boolean;
+  reasoning?: boolean;
+  modalities?: {
+    input?: string[];
+    output?: string[];
+  };
+}
+
+interface ModelsDevProviderRecord {
+  models?: Record<string, ModelsDevModelRecord>;
 }
 
 interface ModelsDevResponse {
-  opencode?: {
-    models?: Record<string, {
-      status?: string;
-    }>;
-  };
+  opencode?: ModelsDevProviderRecord;
+  "opencode-go"?: ModelsDevProviderRecord;
 }
 
 interface ApiMessage {
@@ -181,13 +218,46 @@ interface ModelLimits extends BaseModelLimits {
   advertisedMaxOutputTokens: number;
 }
 
+interface ModelMetadataFields {
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  supportsVision?: boolean;
+  reasoning?: boolean;
+  status?: string;
+}
+
+interface CachedModelMetadataSnapshot {
+  fetchedAt: number;
+  providers: Record<
+    ProviderDefinition["vendor"],
+    Record<string, ModelMetadataFields>
+  >;
+}
+
+interface ResolvedModelMetadata extends BaseModelLimits {
+  supportsVision: boolean;
+  reasoning: boolean;
+  status?: string;
+  source: "models.dev" | "live" | "fallback" | "default";
+}
+
 // Copilot surfaces combine input/output metadata differently across views.
 // Reserve a modest UI output budget, while requests still use the real model max.
 const UI_OUTPUT_TOKEN_RESERVE = 8192;
+const MODEL_METADATA_CACHE_KEY = "opencodego.modelMetadataCache.v3";
+const MODEL_METADATA_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 const DEFAULT_MODEL_LIMITS: BaseModelLimits = {
   contextWindow: 262144,
   maxOutputTokens: 65536
+};
+
+const MODELS_DEV_PROVIDER_BY_VENDOR: Record<
+  ProviderDefinition["vendor"],
+  keyof ModelsDevResponse
+> = {
+  [GO_VENDOR]: "opencode-go",
+  [ZEN_VENDOR]: "opencode",
 };
 
 // Context limits sourced from models.dev (official OpenCode model registry).
@@ -197,30 +267,30 @@ const MODEL_LIMITS_BY_PROVIDER: Record<ProviderDefinition["vendor"], Record<stri
   [GO_VENDOR]: {
     "deepseek-v4-flash": { contextWindow: 1000000, maxOutputTokens: 384000 },
     "deepseek-v4-pro": { contextWindow: 1000000, maxOutputTokens: 384000 },
-    "mimo-v2.5": { contextWindow: 1000000, maxOutputTokens: 128000 },
+    "mimo-v2.5": { contextWindow: 1048576, maxOutputTokens: 131072 },
     "mimo-v2.5-pro": { contextWindow: 1048576, maxOutputTokens: 128000 },
     "mimo-v2-omni": { contextWindow: 262144, maxOutputTokens: 128000 },
     "mimo-v2-pro": { contextWindow: 1048576, maxOutputTokens: 128000 },
-    "kimi-k2.6": { contextWindow: 262144, maxOutputTokens: 65536 },
+    "kimi-k2.6": { contextWindow: 262144, maxOutputTokens: 262144 },
     "kimi-k2.5": { contextWindow: 262144, maxOutputTokens: 65536 },
-    "glm-5.1": { contextWindow: 204800, maxOutputTokens: 131072 },
-    "glm-5": { contextWindow: 204800, maxOutputTokens: 131072 },
+    "glm-5.1": { contextWindow: 200000, maxOutputTokens: 131072 },
+    "glm-5": { contextWindow: 202752, maxOutputTokens: 202752 },
     "minimax-m2.7": { contextWindow: 204800, maxOutputTokens: 131072 },
-    "minimax-m2.5": { contextWindow: 204800, maxOutputTokens: 131072 },
+    "minimax-m2.5": { contextWindow: 204800, maxOutputTokens: 65536 },
     "qwen3.6-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
     "qwen3.5-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
     "hy3-preview": { contextWindow: 256000, maxOutputTokens: 64000 },
     "ring-2.6-1t": { contextWindow: 262000, maxOutputTokens: 66000 }
   },
   [ZEN_VENDOR]: {
-    "deepseek-v4-flash-free": { contextWindow: 1000000, maxOutputTokens: 384000 },
+    "deepseek-v4-flash-free": { contextWindow: 200000, maxOutputTokens: 128000 },
     "minimax-m2.5-free": { contextWindow: 204800, maxOutputTokens: 131072 },
     "qwen3.6-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
-    "qwen3.6-plus-free": { contextWindow: 262144, maxOutputTokens: 65536 },
+    "qwen3.6-plus-free": { contextWindow: 200000, maxOutputTokens: 128000 },
     "qwen3.5-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
     "trinity-large-preview-free": { contextWindow: 131072, maxOutputTokens: 131072 },
-    "nemotron-3-super-free": { contextWindow: 204800, maxOutputTokens: 128000 },
-    "big-pickle": { contextWindow: 200000, maxOutputTokens: 128000 }
+    "nemotron-3-super-free": { contextWindow: 256000, maxOutputTokens: 256000 },
+    "big-pickle": { contextWindow: 128000, maxOutputTokens: 64000 }
   }
 };
 
@@ -236,10 +306,11 @@ type CopilotCompatibleCapabilities = vscode.LanguageModelChatCapabilities & {
 // catalogs can still hit 5xx during traffic bursts. Surface this so users know
 // to retry or fall back to another free model if the request fails.
 const CAPACITY_LIMITED_MODEL_NOTES: Record<string, string> = {
-  "qwen3.6-plus-free": "Free relaunch with limited GPU capacity. Stable for short prompts; bursty traffic or very large tool catalogs may return 5xx — retry or fall back to 'deepseek-v4-flash-free' / 'minimax-m2.5-free'. Paid 'qwen3.6-plus' has no quota."
+  "qwen3.6-plus-free": "Free relaunch with limited GPU capacity. Stable for short prompts; bursty traffic or very large tool catalogs may return 5xx - retry or fall back to 'deepseek-v4-flash-free' / 'big-pickle'. Paid 'qwen3.6-plus' has no quota."
 };
 
-let deprecatedOpenCodeModelIdsPromise: Promise<Set<string>> | undefined;
+let modelMetadataSnapshot: CachedModelMetadataSnapshot | undefined;
+let modelMetadataRefreshPromise: Promise<CachedModelMetadataSnapshot> | undefined;
 
 const VISION_CAPABLE_MODELS = new Set([
   "minimax-m2.7",
@@ -364,6 +435,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
   readonly onDidChangeLanguageModelChatInformation = this.changeEmitter.event;
   private readonly apiKeysByModelId = new Map<string, string>();
   private readonly reasoningContentByToolCallId = new Map<string, string>();
+  private readonly liveModelMetadataById = new Map<string, ModelMetadataFields>();
   private outputChannel: vscode.OutputChannel | undefined;
 
   constructor(
@@ -381,6 +453,71 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
 
   private log(message: string): void {
     this.getOutputChannel().appendLine(`[${new Date().toISOString()}] ${message}`);
+  }
+
+  private async getMetadataSnapshot(): Promise<CachedModelMetadataSnapshot> {
+    return getOpenCodeModelMetadata(this.context, this.getOutputChannel());
+  }
+
+  private resolveModelMetadata(
+    modelId: string,
+    snapshot: CachedModelMetadataSnapshot,
+  ): ResolvedModelMetadata {
+    const cachedMetadata = snapshot.providers[this.definition.vendor][modelId];
+    const liveMetadata = this.liveModelMetadataById.get(modelId);
+    const fallbackMetadata = fallbackModelMetadata(modelId, this.definition.vendor);
+
+    return {
+      contextWindow:
+        liveMetadata?.contextWindow ??
+        cachedMetadata?.contextWindow ??
+        fallbackMetadata?.contextWindow ??
+        DEFAULT_MODEL_LIMITS.contextWindow,
+      maxOutputTokens:
+        liveMetadata?.maxOutputTokens ??
+        cachedMetadata?.maxOutputTokens ??
+        fallbackMetadata?.maxOutputTokens ??
+        DEFAULT_MODEL_LIMITS.maxOutputTokens,
+      supportsVision:
+        liveMetadata?.supportsVision ??
+        cachedMetadata?.supportsVision ??
+        fallbackMetadata?.supportsVision ??
+        false,
+      reasoning:
+        liveMetadata?.reasoning ??
+        cachedMetadata?.reasoning ??
+        fallbackMetadata?.reasoning ??
+        Boolean(thinkingFamily(modelId)),
+      status:
+        liveMetadata?.status ??
+        cachedMetadata?.status ??
+        fallbackMetadata?.status,
+      source: liveMetadata
+        ? "live"
+        : cachedMetadata
+          ? "models.dev"
+          : fallbackMetadata
+            ? "fallback"
+            : "default",
+    };
+  }
+
+  private replaceLiveModelMetadata(entries: ModelListEntry[] | undefined): void {
+    this.liveModelMetadataById.clear();
+    for (const entry of entries ?? []) {
+      if (typeof entry.id !== "string" || !entry.id) {
+        continue;
+      }
+      const metadata = normalizeLiveModelMetadata(entry);
+      if (metadata) {
+        this.liveModelMetadataById.set(entry.id, metadata);
+      }
+    }
+  }
+
+  private async refreshMetadataAndModels(): Promise<void> {
+    await clearOpenCodeModelMetadataCache(this.context);
+    await this.fetchModels();
   }
 
   async manage(): Promise<void> {
@@ -425,6 +562,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       return;
     }
 
+    await this.refreshMetadataAndModels();
     this.changeEmitter.fire();
     vscode.window.showInformationMessage(`${this.definition.displayName} models refreshed.`);
   }
@@ -492,9 +630,11 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
 
   async showDiagnostics(): Promise<void> {
     const models = await vscode.lm.selectChatModels({ vendor: this.definition.vendor });
+    const metadataSnapshot = await this.getMetadataSnapshot();
     const lines = models.map((model) => {
       const rawModelId = resolveRawModelId(model.id);
-      const limits = modelLimits(rawModelId, undefined, this.definition.vendor);
+      const metadata = this.resolveModelMetadata(rawModelId, metadataSnapshot);
+      const limits = modelLimits(metadata);
       return [
       `- ${rawModelId}`,
       `  rawModelId: ${rawModelId}`,
@@ -506,9 +646,12 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       `  advertisedMaxOutputTokens: ${limits.advertisedMaxOutputTokens}`,
       `  advertisedContextWindow: ${limits.advertisedContextWindow}`,
       `  apiMaxOutputTokens: ${limits.maxOutputTokens}`,
+      `  metadataSource: ${metadata.source}`,
+      `  supportsVision: ${metadata.supportsVision}`,
+      `  status: ${metadata.status ?? "active"}`,
       `  thinkingFamily: ${thinkingFamily(rawModelId) ?? "none"}`,
       `  configurationSchema: ${JSON.stringify((model as unknown as { configurationSchema?: unknown }).configurationSchema ?? null)}`,
-      ...(hasExplicitModelLimits(rawModelId, this.definition.vendor) ? [] : ["  limits: using default fallback"])
+      ...(hasExplicitModelLimits(rawModelId, this.definition.vendor) ? [] : ["  limits: using bundled fallback"])
       ].join("\n");
     });
 
@@ -540,10 +683,12 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
 
     const models = await this.fetchModels();
     const settings = getSettings();
+    const metadataSnapshot = await this.getMetadataSnapshot();
 
     return models.map((modelId) => {
+      const metadata = this.resolveModelMetadata(modelId, metadataSnapshot);
       const effectiveModelId = toEffectiveModelId(modelId, this.definition.vendor);
-      const limits = modelLimits(modelId, settings, this.definition.vendor);
+      const limits = modelLimits(metadata, settings);
       this.apiKeysByModelId.set(modelId, apiKey);
       this.apiKeysByModelId.set(effectiveModelId, apiKey);
 
@@ -569,7 +714,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
         isUserSelectable: true,
         maxInputTokens: limits.advertisedMaxInputTokens,
         maxOutputTokens: limits.advertisedMaxOutputTokens,
-        capabilities: modelCapabilities(modelId),
+        capabilities: modelCapabilities(metadata),
         endpointKind: modelEndpointKind(modelId, this.definition),
         provider: this.definition,
         // Inline so Copilot Chat picks up the Thinking submenu directly
@@ -577,7 +722,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
         ...(configurationSchema ? { configurationSchema } : {})
       };
 
-      this.log(`Model registered: id=${info.id} family=${info.family} configurationSchema=${configurationSchema ? JSON.stringify(configurationSchema) : "none"}`);
+      this.log(`Model registered: id=${info.id} family=${info.family} metadataSource=${metadata.source} configurationSchema=${configurationSchema ? JSON.stringify(configurationSchema) : "none"}`);
 
       return info;
     });
@@ -609,7 +754,9 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       ...baseSettings,
       thinking: applyRequestThinkingOverride(rawModelId, baseSettings.thinking, requestOverride)
     };
-    const limits = modelLimits(rawModelId, settings, model.provider.vendor);
+    const metadataSnapshot = await this.getMetadataSnapshot();
+    const metadata = this.resolveModelMetadata(rawModelId, metadataSnapshot);
+    const limits = modelLimits(metadata, settings);
     const thinkingPayload = buildThinkingPayload(rawModelId, settings.thinking);
     const requestHeaders = buildOpenCodeRequestHeaders(
       messages,
@@ -617,7 +764,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       rawModelId,
     );
 
-    this.log(`Request: model=${model.id} rawModel=${rawModelId} endpoint=${model.endpointKind} messages=${apiMessages.length} session=${requestHeaders["x-opencode-session"]} request=${requestHeaders["x-opencode-request"]} modelConfiguration=${JSON.stringify(pickThinkingModelConfiguration(requestOverride))} thinking=${JSON.stringify(settings.thinking)} thinkingPayload=${JSON.stringify(thinkingPayload)}`);
+    this.log(`Request: model=${model.id} rawModel=${rawModelId} endpoint=${model.endpointKind} metadataSource=${metadata.source} messages=${apiMessages.length} session=${requestHeaders["x-opencode-session"]} request=${requestHeaders["x-opencode-request"]} modelConfiguration=${JSON.stringify(pickThinkingModelConfiguration(requestOverride))} thinking=${JSON.stringify(settings.thinking)} thinkingPayload=${JSON.stringify(thinkingPayload)}`);
     if (settings.debugReasoning) {
       this.log("Reasoning debug is enabled. Provider reasoning_content will be written to this output channel when available.");
     }
@@ -696,6 +843,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       }
 
       const data = await response.json() as ModelListResponse;
+      this.replaceLiveModelMetadata(data.data);
       const ids = data.data
         ?.map((model) => model.id)
         .filter((id): id is string => typeof id === "string" && id.length > 0)
@@ -713,10 +861,10 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
     const uniqueModelIds = [...new Set(modelIds)];
 
     try {
-      const deprecatedModelIds = await fetchDeprecatedOpenCodeModelIds();
+      const metadataSnapshot = await this.getMetadataSnapshot();
       const filteredModelIds = uniqueModelIds.filter((modelId) =>
         !KNOWN_UNAVAILABLE_MODEL_IDS.has(modelId)
-        && !deprecatedModelIds.has(modelId)
+        && !shouldHideDeprecatedModel(modelId, this.definition.vendor, metadataSnapshot)
       );
 
       const removedModelIds = uniqueModelIds.filter((modelId) => !filteredModelIds.includes(modelId));
@@ -739,8 +887,48 @@ function getConfiguredApiKey(options?: { configuration?: LanguageModelConfigurat
   return typeof configuredApiKey === "string" && configuredApiKey.trim() ? configuredApiKey.trim() : undefined;
 }
 
-async function fetchDeprecatedOpenCodeModelIds(): Promise<Set<string>> {
-  deprecatedOpenCodeModelIdsPromise ??= (async () => {
+function isFreshModelMetadata(snapshot: CachedModelMetadataSnapshot): boolean {
+  return Date.now() - snapshot.fetchedAt < MODEL_METADATA_CACHE_TTL_MS;
+}
+
+async function clearOpenCodeModelMetadataCache(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  modelMetadataSnapshot = undefined;
+  modelMetadataRefreshPromise = undefined;
+  await context.globalState.update(MODEL_METADATA_CACHE_KEY, undefined);
+}
+
+async function getOpenCodeModelMetadata(
+  context: vscode.ExtensionContext,
+  output?: vscode.OutputChannel,
+): Promise<CachedModelMetadataSnapshot> {
+  const cached =
+    modelMetadataSnapshot ??
+    context.globalState.get<CachedModelMetadataSnapshot>(
+      MODEL_METADATA_CACHE_KEY,
+    );
+  if (cached) {
+    modelMetadataSnapshot = cached;
+    if (isFreshModelMetadata(cached)) {
+      return cached;
+    }
+    void refreshOpenCodeModelMetadata(context, output);
+    return cached;
+  }
+
+  return refreshOpenCodeModelMetadata(context, output);
+}
+
+async function refreshOpenCodeModelMetadata(
+  context: vscode.ExtensionContext,
+  output?: vscode.OutputChannel,
+): Promise<CachedModelMetadataSnapshot> {
+  if (modelMetadataRefreshPromise) {
+    return modelMetadataRefreshPromise;
+  }
+
+  modelMetadataRefreshPromise = (async () => {
     const response = await fetch(MODELS_DEV_API_URL);
 
     if (!response.ok) {
@@ -748,19 +936,42 @@ async function fetchDeprecatedOpenCodeModelIds(): Promise<Set<string>> {
     }
 
     const data = await response.json() as ModelsDevResponse;
-    const models = data.opencode?.models ?? {};
-    const deprecatedModelIds = new Set<string>();
-
-    for (const [modelId, model] of Object.entries(models)) {
-      if (model.status === "deprecated") {
-        deprecatedModelIds.add(modelId);
+    const snapshot = normalizeModelsDevSnapshot(data);
+    modelMetadataSnapshot = snapshot;
+    await context.globalState.update(MODEL_METADATA_CACHE_KEY, snapshot);
+    output?.appendLine(
+      `[metadata] refreshed models.dev cache go=${Object.keys(snapshot.providers[GO_VENDOR]).length} zen=${Object.keys(snapshot.providers[ZEN_VENDOR]).length}`,
+    );
+    return snapshot;
+  })()
+    .catch((error) => {
+      const cached =
+        modelMetadataSnapshot ??
+        context.globalState.get<CachedModelMetadataSnapshot>(
+          MODEL_METADATA_CACHE_KEY,
+        );
+      if (cached) {
+        const message = error instanceof Error ? error.message : String(error);
+        output?.appendLine(
+          `[metadata] refresh failed, using cached snapshot: ${message}`,
+        );
+        modelMetadataSnapshot = cached;
+        return cached;
       }
-    }
 
-    return deprecatedModelIds;
-  })();
+      const message = error instanceof Error ? error.message : String(error);
+      const fallback = bundledModelMetadataSnapshot();
+      output?.appendLine(
+        `[metadata] refresh failed, using bundled snapshot: ${message}`,
+      );
+      modelMetadataSnapshot = fallback;
+      return fallback;
+    })
+    .finally(() => {
+      modelMetadataRefreshPromise = undefined;
+    });
 
-  return deprecatedOpenCodeModelIdsPromise;
+  return modelMetadataRefreshPromise;
 }
 
 async function streamChatCompletions(
@@ -2327,13 +2538,11 @@ function isQwenModel(modelId: string): boolean {
 }
 
 function modelLimits(
-  modelId: string,
+  metadata: ResolvedModelMetadata,
   settings = getSettings(),
-  vendor: ProviderDefinition["vendor"] = ZEN_VENDOR
 ): ModelLimits {
-  const limits = MODEL_LIMITS_BY_PROVIDER[vendor][modelId] ?? DEFAULT_MODEL_LIMITS;
-  const contextWindow = positiveOverride(settings.maxInputTokensOverride) ?? limits.contextWindow;
-  const maxOutputTokens = positiveOverride(settings.maxOutputTokensOverride) ?? limits.maxOutputTokens;
+  const contextWindow = positiveOverride(settings.maxInputTokensOverride) ?? metadata.contextWindow;
+  const maxOutputTokens = positiveOverride(settings.maxOutputTokensOverride) ?? metadata.maxOutputTokens;
   const apiMaxOutputTokens = Math.min(maxOutputTokens, contextWindow);
   // advertisedContextWindow = actual model context window (not inflated).
   // Adding apiMaxOutputTokens here inflates the value above the real limit,
@@ -2373,8 +2582,14 @@ function positiveOverride(value: number): number | undefined {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
 }
 
-function modelCapabilities(modelId: string): CopilotCompatibleCapabilities {
-  const supportsVision = VISION_CAPABLE_MODELS.has(modelId);
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+function modelCapabilities(metadata: ResolvedModelMetadata): CopilotCompatibleCapabilities {
+  const supportsVision = metadata.supportsVision;
   return {
     imageInput: supportsVision,
     toolCalling: 128,
@@ -2395,6 +2610,153 @@ function toEffectiveModelId(modelId: string, vendor: ProviderDefinition["vendor"
   return `${vendor}:${modelId}::${MODEL_METADATA_REVISION}`;
 }
 
+function bundledModelMetadataSnapshot(): CachedModelMetadataSnapshot {
+  return {
+    fetchedAt: 0,
+    providers: {
+      [GO_VENDOR]: bundledModelMetadataForProvider(GO_VENDOR),
+      [ZEN_VENDOR]: bundledModelMetadataForProvider(ZEN_VENDOR),
+    },
+  };
+}
+
+function bundledModelMetadataForProvider(
+  vendor: ProviderDefinition["vendor"],
+): Record<string, ModelMetadataFields> {
+  return Object.fromEntries(
+    Object.keys(MODEL_LIMITS_BY_PROVIDER[vendor]).flatMap((modelId) => {
+      const metadata = fallbackModelMetadata(modelId, vendor);
+      return metadata ? [[modelId, metadata] as const] : [];
+    }),
+  );
+}
+
+function fallbackModelMetadata(
+  modelId: string,
+  vendor: ProviderDefinition["vendor"],
+): ModelMetadataFields | undefined {
+  const limits = MODEL_LIMITS_BY_PROVIDER[vendor][modelId];
+  const supportsVision = VISION_CAPABLE_MODELS.has(modelId);
+  const status =
+    vendor === ZEN_VENDOR && modelId === "minimax-m2.5-free"
+      ? "deprecated"
+      : undefined;
+
+  if (!limits && !supportsVision && !status && !thinkingFamily(modelId)) {
+    return undefined;
+  }
+
+  return {
+    contextWindow: limits?.contextWindow,
+    maxOutputTokens: limits?.maxOutputTokens,
+    supportsVision: supportsVision || undefined,
+    reasoning: Boolean(thinkingFamily(modelId)) || undefined,
+    status,
+  };
+}
+
+function normalizeModelsDevSnapshot(
+  data: ModelsDevResponse,
+): CachedModelMetadataSnapshot {
+  return {
+    fetchedAt: Date.now(),
+    providers: {
+      [GO_VENDOR]: normalizeModelsDevProvider(
+        data[MODELS_DEV_PROVIDER_BY_VENDOR[GO_VENDOR]]?.models ?? {},
+      ),
+      [ZEN_VENDOR]: normalizeModelsDevProvider(
+        data[MODELS_DEV_PROVIDER_BY_VENDOR[ZEN_VENDOR]]?.models ?? {},
+      ),
+    },
+  };
+}
+
+function normalizeModelsDevProvider(
+  models: Record<string, ModelsDevModelRecord>,
+): Record<string, ModelMetadataFields> {
+  const normalized: Record<string, ModelMetadataFields> = {};
+
+  for (const [modelId, model] of Object.entries(models)) {
+    const metadata = normalizeModelMetadataFields({
+      contextWindow: positiveNumber(model.limit?.context),
+      maxOutputTokens: positiveNumber(model.limit?.output),
+      supportsVision: detectVisionSupport(model.modalities, model.attachment),
+      reasoning:
+        typeof model.reasoning === "boolean" ? model.reasoning : undefined,
+      status: typeof model.status === "string" ? model.status : undefined,
+    });
+
+    if (metadata) {
+      normalized[modelId] = metadata;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeLiveModelMetadata(
+  model: ModelListEntry,
+): ModelMetadataFields | undefined {
+  return normalizeModelMetadataFields({
+    contextWindow: positiveNumber(
+      model.contextWindow ?? model.context_window ?? model.limit?.context,
+    ),
+    maxOutputTokens: positiveNumber(
+      model.maxOutputTokens ?? model.max_output_tokens ?? model.limit?.output,
+    ),
+    supportsVision: detectVisionSupport(
+      model.modalities,
+      model.imageInput ?? model.image_input ?? model.attachment,
+    ),
+    reasoning:
+      typeof model.reasoning === "boolean" ? model.reasoning : undefined,
+    status: model.deprecated
+      ? "deprecated"
+      : typeof model.status === "string"
+        ? model.status
+        : undefined,
+  });
+}
+
+function normalizeModelMetadataFields(
+  metadata: ModelMetadataFields,
+): ModelMetadataFields | undefined {
+  if (
+    metadata.contextWindow === undefined &&
+    metadata.maxOutputTokens === undefined &&
+    metadata.supportsVision === undefined &&
+    metadata.reasoning === undefined &&
+    metadata.status === undefined
+  ) {
+    return undefined;
+  }
+  return metadata;
+}
+
+function detectVisionSupport(
+  modalities: { input?: string[]; output?: string[] } | undefined,
+  attachmentHint: boolean | undefined,
+): boolean | undefined {
+  const inputModalities = Array.isArray(modalities?.input)
+    ? modalities.input
+    : undefined;
+  if (inputModalities?.length) {
+    return inputModalities.some((modality) => modality !== "text");
+  }
+  return typeof attachmentHint === "boolean" ? attachmentHint : undefined;
+}
+
+function shouldHideDeprecatedModel(
+  modelId: string,
+  vendor: ProviderDefinition["vendor"],
+  snapshot: CachedModelMetadataSnapshot,
+): boolean {
+  if (vendor !== ZEN_VENDOR) {
+    return false;
+  }
+  return snapshot.providers[vendor][modelId]?.status === "deprecated";
+}
+
 function resolveRawModelId(modelId: string): string {
   const [base] = modelId.split("::");
   const prefix = `${GO_VENDOR}:`;
@@ -2409,7 +2771,7 @@ function resolveRawModelId(modelId: string): string {
 }
 
 function hasExplicitModelLimits(modelId: string, vendor: ProviderDefinition["vendor"]): boolean {
-  return Boolean(MODEL_LIMITS_BY_PROVIDER[vendor][modelId]);
+  return Boolean(fallbackModelMetadata(modelId, vendor));
 }
 
 function isFreeZenModel(modelId: string): boolean {
