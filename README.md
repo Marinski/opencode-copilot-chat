@@ -116,7 +116,7 @@ VS Code and Copilot read separate input/output metadata fields for UI display. T
 
 ### Bundled model limits
 
-All limits are sourced from the [models.dev](https://models.dev) registry. Per-provider limits are tracked separately (Go vs Zen) so models shared across providers use the correct values for each.
+Limits are taken from the current [models.dev](https://models.dev) registry when available, with bundled fallback values retained for legacy entries that are no longer published there. Per-provider limits are tracked separately (Go vs Zen) so models shared across providers use the correct values for each.
 
 **OpenCode Go**
 
@@ -124,26 +124,26 @@ All limits are sourced from the [models.dev](https://models.dev) registry. Per-p
 |---|---:|---:|
 | `deepseek-v4-pro` / `deepseek-v4-flash` | 1,000,000 | 384,000 |
 | `mimo-v2.5-pro` / `mimo-v2-pro` | 1,048,576 | 128,000 |
-| `mimo-v2.5` | 1,048,576 | 131,072 |
-| `kimi-k2.6` | 262,144 | 262,144 |
+| `mimo-v2.5` | 1,000,000 | 128,000 |
+| `kimi-k2.6` | 262,144 | 65,536 |
 | `kimi-k2.5` | 262,144 | 65,536 |
 | `qwen3.6-plus` / `qwen3.5-plus` | 262,144 | 65,536 |
 | `mimo-v2-omni` | 262,144 | 128,000 |
 | `hy3-preview` | 256,000 | 64,000 |
 | `minimax-m2.7` | 204,800 | 131,072 |
 | `minimax-m2.5` | 204,800 | 65,536 |
-| `glm-5.1` | 200,000 | 131,072 |
-| `glm-5` | 202,752 | 202,752 |
+| `glm-5.1` | 202,752 | 32,768 |
+| `glm-5` | 202,752 | 32,768 |
 
 **OpenCode Zen (free models)**
 
 | Model | Context window | Max output tokens |
 |---|---:|---:|
 | `deepseek-v4-flash-free` | 200,000 | 128,000 |
-| `qwen3.6-plus-free` | 200,000 | 128,000 |
+| `qwen3.6-plus-free` | 262,144 | 65,536 |
 | `minimax-m2.5-free` | 204,800 | 131,072 |
-| `nemotron-3-super-free` | 256,000 | 256,000 |
-| `big-pickle` | 128,000 | 64,000 |
+| `nemotron-3-super-free` | 204,800 | 128,000 |
+| `big-pickle` | 200,000 | 128,000 |
 
 Set `opencodego.maxInputTokens` or `opencodego.maxTokens` to a non-zero value to override the bundled defaults globally.
 

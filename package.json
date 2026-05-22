@@ -37,6 +37,12 @@
   ],
   "activationEvents": [
     "onStartupFinished",
+    "onCommand:opencodego.manage",
+    "onCommand:opencodego.diagnostics",
+    "onCommand:opencodego.setApiKey",
+    "onCommand:opencodezen.diagnostics",
+    "onCommand:opencodego.modelPickerDiagnostics",
+    "onCommand:opencodego.setThinkingEffort",
     "onLanguageModelChatProvider:opencodego",
     "onLanguageModelChatProvider:opencodezen"
   ],

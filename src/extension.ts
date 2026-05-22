@@ -279,14 +279,14 @@ const MODEL_LIMITS_BY_PROVIDER: Record<ProviderDefinition["vendor"], Record<stri
   [GO_VENDOR]: {
     "deepseek-v4-flash": { contextWindow: 1000000, maxOutputTokens: 384000 },
     "deepseek-v4-pro": { contextWindow: 1000000, maxOutputTokens: 384000 },
-    "mimo-v2.5": { contextWindow: 1048576, maxOutputTokens: 131072 },
+    "mimo-v2.5": { contextWindow: 1000000, maxOutputTokens: 128000 },
     "mimo-v2.5-pro": { contextWindow: 1048576, maxOutputTokens: 128000 },
     "mimo-v2-omni": { contextWindow: 262144, maxOutputTokens: 128000 },
     "mimo-v2-pro": { contextWindow: 1048576, maxOutputTokens: 128000 },
-    "kimi-k2.6": { contextWindow: 262144, maxOutputTokens: 262144 },
+    "kimi-k2.6": { contextWindow: 262144, maxOutputTokens: 65536 },
     "kimi-k2.5": { contextWindow: 262144, maxOutputTokens: 65536 },
-    "glm-5.1": { contextWindow: 200000, maxOutputTokens: 131072 },
-    "glm-5": { contextWindow: 202752, maxOutputTokens: 202752 },
+    "glm-5.1": { contextWindow: 202752, maxOutputTokens: 32768 },
+    "glm-5": { contextWindow: 202752, maxOutputTokens: 32768 },
     "minimax-m2.7": { contextWindow: 204800, maxOutputTokens: 131072 },
     "minimax-m2.5": { contextWindow: 204800, maxOutputTokens: 65536 },
     "qwen3.6-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
@@ -298,11 +298,11 @@ const MODEL_LIMITS_BY_PROVIDER: Record<ProviderDefinition["vendor"], Record<stri
     "deepseek-v4-flash-free": { contextWindow: 200000, maxOutputTokens: 128000 },
     "minimax-m2.5-free": { contextWindow: 204800, maxOutputTokens: 131072 },
     "qwen3.6-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
-    "qwen3.6-plus-free": { contextWindow: 200000, maxOutputTokens: 128000 },
+    "qwen3.6-plus-free": { contextWindow: 262144, maxOutputTokens: 65536 },
     "qwen3.5-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
     "trinity-large-preview-free": { contextWindow: 131072, maxOutputTokens: 131072 },
-    "nemotron-3-super-free": { contextWindow: 256000, maxOutputTokens: 256000 },
-    "big-pickle": { contextWindow: 128000, maxOutputTokens: 64000 }
+    "nemotron-3-super-free": { contextWindow: 204800, maxOutputTokens: 128000 },
+    "big-pickle": { contextWindow: 200000, maxOutputTokens: 128000 }
   }
 };
 
@@ -1176,6 +1176,11 @@ async function streamAnthropicMessages(
     settings.debugReasoning,
     settings.requestTimeoutMs,
     settings.streamIdleTimeoutMs,
+    {
+      Authorization: `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01"
+    },
   );
 }
 
@@ -1259,7 +1264,10 @@ async function streamGoogleGenerateContent(
     settings.debugReasoning,
     settings.requestTimeoutMs,
     settings.streamIdleTimeoutMs,
-    { "x-goog-api-key": apiKey },
+    {
+      Authorization: `Bearer ${apiKey}`,
+      "x-goog-api-key": apiKey
+    },
   );
 
   extractor.flushReasoningFallback(progress);
