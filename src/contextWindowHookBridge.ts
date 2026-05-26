@@ -47,7 +47,9 @@ function installHookImplementations(hookModule: ContextWindowHookModule): void {
   setOutputBufferImpl = hookModule.setContextWindowOutputBufferForRequest;
 }
 
-async function loadContextWindowHookModule(): Promise<ContextWindowHookModule | null> {
+async function loadContextWindowHookModule(
+  logDiagnostic?: (message: string) => void,
+): Promise<ContextWindowHookModule | null> {
   if (loadedContextWindowHookModule) {
     return loadedContextWindowHookModule;
   }
@@ -58,7 +60,9 @@ async function loadContextWindowHookModule(): Promise<ContextWindowHookModule | 
         loadedContextWindowHookModule = hookModule;
         return hookModule;
       })
-      .catch(() => {
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logDiagnostic?.(`contextWindowHook: failed to import hook module — ${message}`);
         loadingContextWindowHookModule = undefined;
         return null;
       });
@@ -95,18 +99,23 @@ export function setContextWindowOutputBufferForRequest(
   setOutputBufferImpl(localRequestId, outputBuffer);
 }
 
-export async function initializeContextWindowHookBridge(): Promise<boolean> {
-  const hookModule = await loadContextWindowHookModule();
+export async function initializeContextWindowHookBridge(
+  logDiagnostic?: (message: string) => void,
+): Promise<boolean> {
+  const hookModule = await loadContextWindowHookModule(logDiagnostic);
   if (!hookModule) {
     installNoopImplementations();
+    logDiagnostic?.("contextWindowHook: bridge staying in no-op mode (module not available)");
     return false;
   }
 
-  const success = await hookModule.initializeContextWindowHook();
+  const success = await hookModule.initializeContextWindowHook(logDiagnostic);
   if (success) {
     installHookImplementations(hookModule);
+    logDiagnostic?.("contextWindowHook: bridge active — usage will be injected into the Copilot Chat footer");
   } else {
     installNoopImplementations();
+    logDiagnostic?.("contextWindowHook: bridge staying in no-op mode (proxy capture failed or config changed)");
   }
 
   return success;

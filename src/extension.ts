@@ -533,9 +533,31 @@ function isExperimentalContextIndicatorEnabled(): boolean {
     .get("experimentalContextIndicator", false);
 }
 
+let hookDiagnosticChannel: vscode.OutputChannel | undefined;
+
+function getHookDiagnosticChannel(): vscode.OutputChannel {
+  if (!hookDiagnosticChannel) {
+    hookDiagnosticChannel = vscode.window.createOutputChannel("OpenCode");
+  }
+  return hookDiagnosticChannel;
+}
+
+function hookDiagnostic(message: string): void {
+  getHookDiagnosticChannel().appendLine(
+    `[${new Date().toISOString()}] [contextWindowHook] ${message}`,
+  );
+}
+
 async function syncExperimentalContextIndicator(): Promise<void> {
   if (isExperimentalContextIndicatorEnabled()) {
-    await initializeContextWindowHookBridge();
+    const ok = await initializeContextWindowHookBridge(hookDiagnostic);
+    if (!ok) {
+      hookDiagnostic(
+        "experimentalContextIndicator is enabled but the bridge could not activate. " +
+        "The Copilot Chat footer will show default (estimated) usage. " +
+        "This is expected if VS Code internals changed — check for extension updates.",
+      );
+    }
     return;
   }
 

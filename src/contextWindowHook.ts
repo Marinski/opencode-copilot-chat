@@ -154,7 +154,9 @@ function cleanupVsCodeRequest(requestId: string): void {
   outputBuffersByLocalRequestId.delete(localRequestId);
 }
 
-async function captureProxy(): Promise<CapturedProxy | null> {
+async function captureProxy(
+  logDiagnostic?: (message: string) => void,
+): Promise<CapturedProxy | null> {
   const originalMapSet = Map.prototype.set;
   const probeId = `_opencode_probe_${Date.now()}`;
   let found = false;
@@ -187,8 +189,9 @@ async function captureProxy(): Promise<CapturedProxy | null> {
   try {
     participant = vscode.chat.createChatParticipant(probeId, () => undefined);
     await new Promise((resolve) => setTimeout(resolve, 150));
-  } catch {
-    // Ignore. The hook is opt-in and can fail safely.
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logDiagnostic?.(`contextWindowHook: probe participant creation failed — ${message}`);
   } finally {
     participant?.dispose();
     Map.prototype.set = originalMapSet;
@@ -468,20 +471,24 @@ export function disposeContextWindowHook(): boolean {
   return hadState;
 }
 
-export async function initializeContextWindowHook(): Promise<boolean> {
+export async function initializeContextWindowHook(
+  logDiagnostic?: (message: string) => void,
+): Promise<boolean> {
   if (!isContextIndicatorEnabled()) {
     return false;
   }
 
   if (hookInstalled) {
+    logDiagnostic?.("contextWindowHook: already installed, skipping re-initialization");
     return true;
   }
 
   const generation = ++initializationGeneration;
   installRequestTracking();
-  const captured = await captureProxy();
+  const captured = await captureProxy(logDiagnostic);
 
   if (generation !== initializationGeneration || !isContextIndicatorEnabled()) {
+    logDiagnostic?.("contextWindowHook: initialization aborted (generation mismatch or config disabled)");
     return false;
   }
 
@@ -495,10 +502,12 @@ export async function initializeContextWindowHook(): Promise<boolean> {
     vsCodeToLocalRequestIds.clear();
     queuedProgressLocalRequestIds.length = 0;
     queuedProgressLocalRequestIdSet.clear();
+    logDiagnostic?.("contextWindowHook: proxy capture failed — the Copilot Chat internals may have changed in this VS Code version");
     return false;
   }
 
   patchProxy(captured);
+  logDiagnostic?.("contextWindowHook: proxy captured and patched successfully");
   return true;
 }
 
