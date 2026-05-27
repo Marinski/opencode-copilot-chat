@@ -4,6 +4,13 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ## Unreleased
 
+## [0.1.7] — 2026-05-27
+
+### Fixed
+
+- Report provider token usage back to VS Code via `LanguageModelDataPart` MIME `usage` so Copilot Chat's Context Window widget can display used tokens instead of staying at 0%.
+- Improved local token counting for chat messages, tool calls, tool results, JSON/data parts, and image attachments.
+
 ## [0.1.6] — 2026-05-21
 
 ### Added

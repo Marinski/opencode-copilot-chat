@@ -61,7 +61,7 @@ const KNOWN_UNAVAILABLE_MODEL_IDS = new Set([
 const DEFAULT_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 const OPEN_CODE_CLIENT = "vscode-copilot-chat";
-const OPEN_CODE_USER_AGENT = "opencode-copilot-chat/0.1.6 VSCode";
+const OPEN_CODE_USER_AGENT = "opencode-copilot-chat/0.1.7 VSCode";
 
 const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
   [GO_VENDOR]: {
@@ -185,6 +185,15 @@ interface PendingToolCall {
   arguments: string;
 }
 
+interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
+}
+
 interface ThinkingSettings {
   deepseek: "off" | "high" | "max";
   glm: "on" | "off";
@@ -258,6 +267,12 @@ interface ModelRoutingFields {
 // Copilot surfaces combine input/output metadata differently across views.
 // Reserve a modest UI output budget, while requests still use the real model max.
 const UI_OUTPUT_TOKEN_RESERVE = 8192;
+const MESSAGE_TOKEN_OVERHEAD = 4;
+const MESSAGE_NAME_TOKEN_OVERHEAD = 1;
+const TOOL_CALL_TOKEN_OVERHEAD = 10;
+const TOOL_RESULT_TOKEN_OVERHEAD = 6;
+const IMAGE_TOKEN_ESTIMATE = 1024;
+const USAGE_DATA_PART_MIME_TYPE = "usage";
 
 type CopilotCompatibleCapabilities = vscode.LanguageModelChatCapabilities & {
   supportsToolCalling: boolean;
@@ -769,8 +784,9 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
     text: string | vscode.LanguageModelChatRequestMessage,
     _token: vscode.CancellationToken
   ): Promise<number> {
-    const value = typeof text === "string" ? text : messageText(text);
-    return estimateTokenCount(value);
+    return typeof text === "string"
+      ? estimateTokenCount(text)
+      : estimateChatMessageTokenCount(text);
   }
 
   private async fetchModels(): Promise<string[]> {
@@ -950,6 +966,7 @@ async function streamChatCompletions(
       temperature: settings.temperature,
       max_tokens: limits.maxOutputTokens,
       stream: true,
+      stream_options: { include_usage: true },
       ...thinkingPayload,
       ...(tools.length ? { tools, tool_choice: toolChoice(options.toolMode) } : {})
     },
@@ -1007,6 +1024,7 @@ async function streamChatCompletionsWithAnthropicStream(
       temperature: settings.temperature,
       max_tokens: limits.maxOutputTokens,
       stream: true,
+      stream_options: { include_usage: true },
       ...thinkingPayload,
       ...(tools.length ? { tools, tool_choice: toolChoice(options.toolMode) } : {})
     },
@@ -1689,6 +1707,7 @@ async function streamOpenCodeResponse(
       let data: unknown;
       try { data = JSON.parse(raw); } catch { data = undefined; }
       if (data !== undefined) {
+        reportUsage(progress, extractTokenUsage(data), output);
         for (const part of extractFullParts(data)) {
           progress.report(part);
         }
@@ -1701,6 +1720,7 @@ async function streamOpenCodeResponse(
     let buffer = "";
     let totalBytes = 0;
     let totalEvents = 0;
+    let usage: TokenUsage | undefined;
     resetStreamIdleTimeout();
 
     while (!token.isCancellationRequested) {
@@ -1724,7 +1744,9 @@ async function streamOpenCodeResponse(
         if (verbose && output && event.trim()) {
           output.appendLine(`[sse] ${truncateForLog(event)}`);
         }
-        for (const part of parseServerSentEvent(event, extractStreamParts)) {
+        const parsedEvent = parseServerSentEvent(event, extractStreamParts);
+        usage = parsedEvent.usage ?? usage;
+        for (const part of parsedEvent.parts) {
           progress.report(part);
         }
       }
@@ -1734,10 +1756,14 @@ async function streamOpenCodeResponse(
       if (verbose && output) {
         output.appendLine(`[sse-tail] ${truncateForLog(buffer)}`);
       }
-      for (const part of parseServerSentEvent(buffer, extractStreamParts)) {
+      const parsedEvent = parseServerSentEvent(buffer, extractStreamParts);
+      usage = parsedEvent.usage ?? usage;
+      for (const part of parsedEvent.parts) {
         progress.report(part);
       }
     }
+
+    reportUsage(progress, usage, output);
 
     if (output) {
       output.appendLine(`[sse-stats] totalBytes=${totalBytes} totalEvents=${totalEvents} bufferTailLen=${buffer.length}`);
@@ -1771,13 +1797,14 @@ async function streamOpenCodeResponse(
 function parseServerSentEvent(
   event: string,
   extractParts: (data: unknown) => vscode.LanguageModelResponsePart[]
-): vscode.LanguageModelResponsePart[] {
+): { parts: vscode.LanguageModelResponsePart[]; usage?: TokenUsage } {
   const lines = event
     .split(/\r?\n/)
     .filter((line) => line.startsWith("data:"))
     .map((line) => line.slice("data:".length).trim());
 
   const parts: vscode.LanguageModelResponsePart[] = [];
+  let usage: TokenUsage | undefined;
 
   for (const line of lines) {
     if (!line || line === "[DONE]") {
@@ -1786,13 +1813,143 @@ function parseServerSentEvent(
 
     try {
       const data = JSON.parse(line) as unknown;
+      usage = extractTokenUsage(data) ?? usage;
       parts.push(...extractParts(data));
     } catch {
       // Ignore malformed SSE lines; the API may send comments or keep-alive frames.
     }
   }
 
-  return parts;
+  return { parts, usage };
+}
+
+function reportUsage(
+  progress: vscode.Progress<vscode.LanguageModelResponsePart>,
+  usage: TokenUsage | undefined,
+  output?: vscode.OutputChannel,
+): void {
+  if (!usage) {
+    return;
+  }
+
+  try {
+    const data = new TextEncoder().encode(JSON.stringify(usage));
+    progress.report(new vscode.LanguageModelDataPart(data, USAGE_DATA_PART_MIME_TYPE));
+    output?.appendLine(`[usage] ${JSON.stringify(usage)}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    output?.appendLine(`[usage-error] ${message}`);
+  }
+}
+
+function extractTokenUsage(data: unknown): TokenUsage | undefined {
+  if (!isRecord(data)) {
+    return undefined;
+  }
+
+  return normalizeOpenAiTokenUsage(data.usage)
+    ?? normalizeOpenAiTokenUsage(isRecord(data.response) ? data.response.usage : undefined)
+    ?? normalizeGoogleTokenUsage(data.usageMetadata)
+    ?? normalizeAnthropicTokenUsage(data.usage);
+}
+
+function normalizeOpenAiTokenUsage(usage: unknown): TokenUsage | undefined {
+  if (!isRecord(usage)) {
+    return undefined;
+  }
+
+  const promptTokens = numberField(usage, ["prompt_tokens", "input_tokens"]);
+  const completionTokens = numberField(usage, ["completion_tokens", "output_tokens"]);
+  const totalTokens = numberField(usage, ["total_tokens"]);
+  const cachedTokens = numberField(
+    isRecord(usage.prompt_tokens_details) ? usage.prompt_tokens_details : undefined,
+    ["cached_tokens"],
+  ) ?? numberField(
+    isRecord(usage.input_tokens_details) ? usage.input_tokens_details : undefined,
+    ["cached_tokens"],
+  );
+
+  return buildTokenUsage(promptTokens, completionTokens, totalTokens, cachedTokens);
+}
+
+function normalizeAnthropicTokenUsage(usage: unknown): TokenUsage | undefined {
+  if (!isRecord(usage)) {
+    return undefined;
+  }
+
+  const inputTokens = numberField(usage, ["input_tokens"]);
+  const cacheCreationTokens = numberField(usage, ["cache_creation_input_tokens"]) ?? 0;
+  const cacheReadTokens = numberField(usage, ["cache_read_input_tokens"]) ?? 0;
+  const promptTokens = inputTokens === undefined
+    ? undefined
+    : inputTokens + cacheCreationTokens + cacheReadTokens;
+  const completionTokens = numberField(usage, ["output_tokens"]);
+
+  return buildTokenUsage(
+    promptTokens,
+    completionTokens,
+    undefined,
+    cacheReadTokens || undefined,
+  );
+}
+
+function normalizeGoogleTokenUsage(usage: unknown): TokenUsage | undefined {
+  if (!isRecord(usage)) {
+    return undefined;
+  }
+
+  const promptTokens = numberField(usage, ["promptTokenCount"]);
+  const completionTokens =
+    (numberField(usage, ["candidatesTokenCount"]) ?? 0)
+    + (numberField(usage, ["thoughtsTokenCount"]) ?? 0);
+  const totalTokens = numberField(usage, ["totalTokenCount"]);
+  const cachedTokens = numberField(usage, ["cachedContentTokenCount"]);
+
+  return buildTokenUsage(
+    promptTokens,
+    completionTokens || undefined,
+    totalTokens,
+    cachedTokens,
+  );
+}
+
+function buildTokenUsage(
+  promptTokens: number | undefined,
+  completionTokens: number | undefined,
+  totalTokens: number | undefined,
+  cachedTokens?: number,
+): TokenUsage | undefined {
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
+    return undefined;
+  }
+
+  const prompt = Math.max(0, Math.floor(promptTokens ?? Math.max(0, (totalTokens ?? 0) - (completionTokens ?? 0))));
+  const completion = Math.max(0, Math.floor(completionTokens ?? Math.max(0, (totalTokens ?? 0) - prompt)));
+  const total = Math.max(0, Math.floor(totalTokens ?? prompt + completion));
+
+  return {
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: total,
+    ...(cachedTokens !== undefined
+      ? { prompt_tokens_details: { cached_tokens: Math.max(0, Math.floor(cachedTokens)) } }
+      : {}),
+  };
+}
+
+function numberField(record: Record<string, unknown> | undefined, fields: string[]): number | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  for (const field of fields) {
+    const value = record[field];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function convertMessage(
@@ -1889,6 +2046,75 @@ function reasoningForToolCalls(
 
 function messageText(message: vscode.LanguageModelChatRequestMessage): string {
   return message.content.map(partToText).filter(Boolean).join("\n");
+}
+
+function estimateChatMessageTokenCount(message: vscode.LanguageModelChatRequestMessage): number {
+  const role = typeof message.role === "string" ? message.role : String(message.role);
+  const name = typeof message.name === "string" ? message.name : "";
+  const contentTokens = message.content
+    .map(partToTokenCount)
+    .reduce((total, count) => total + count, 0);
+
+  return MESSAGE_TOKEN_OVERHEAD
+    + estimateTokenCount(role)
+    + (name ? MESSAGE_NAME_TOKEN_OVERHEAD + estimateTokenCount(name) : 0)
+    + contentTokens;
+}
+
+function partToTokenCount(part: vscode.LanguageModelInputPart | unknown): number {
+  if (part instanceof vscode.LanguageModelTextPart) {
+    return estimateTokenCount(part.value);
+  }
+
+  if (part instanceof vscode.LanguageModelToolResultPart) {
+    const contentTokens = part.content
+      .map(partToTokenCount)
+      .reduce((total, count) => total + count, 0);
+    return TOOL_RESULT_TOKEN_OVERHEAD
+      + estimateTokenCount(part.callId)
+      + contentTokens;
+  }
+
+  if (part instanceof vscode.LanguageModelToolCallPart) {
+    return TOOL_CALL_TOKEN_OVERHEAD
+      + estimateTokenCount(part.callId)
+      + estimateTokenCount(part.name)
+      + estimateStructuredTokenCount(part.input);
+  }
+
+  if (part instanceof vscode.LanguageModelDataPart) {
+    return estimateDataPartTokenCount(part);
+  }
+
+  if (typeof part === "string") {
+    return estimateTokenCount(part);
+  }
+
+  if (isRecord(part)) {
+    return estimateStructuredTokenCount(part);
+  }
+
+  return 0;
+}
+
+function estimateStructuredTokenCount(value: unknown): number {
+  try {
+    return estimateTokenCount(JSON.stringify(value));
+  } catch {
+    return 0;
+  }
+}
+
+function estimateDataPartTokenCount(part: vscode.LanguageModelDataPart): number {
+  if (part.mimeType.startsWith("image/")) {
+    return IMAGE_TOKEN_ESTIMATE;
+  }
+
+  if (part.mimeType.startsWith("text/") || part.mimeType === "application/json") {
+    return estimateTokenCount(Buffer.from(part.data).toString("utf8"));
+  }
+
+  return Math.max(1, Math.ceil(part.data.byteLength / 4));
 }
 
 function partToText(part: vscode.LanguageModelInputPart | unknown): string {
