@@ -20,6 +20,11 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
   - Usage log persisted in VS Code `globalState` so data survives editor restarts.
   - New command: `OpenCode Go: Show Usage` (`opencodego.showUsage`).
 
+## Unreleased
+
+### Fixed
+- Strip `<think>...</think>` tags from model output when enabled. For streaming responses, the inner thinking content is accumulated into the reasoning pipeline and displayed via the existing reasoning fallback. For non-streaming fallback, the tags are removed and only the surrounding text is kept. Gated by the new `opencodego.stripThinkTags` setting (`"auto"` / `"always"` / `"never"`). In `"auto"` mode (default), stripping applies only to known models that inline reasoning in `<think>` tags within the content field (MiniMax M3 family).
+
 ## [0.1.10] — 2026-06-05
 
 ### Fixed

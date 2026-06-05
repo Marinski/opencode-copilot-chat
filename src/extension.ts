@@ -260,6 +260,7 @@ interface ApiSettings {
   requestTimeoutMs: number;
   streamIdleTimeoutMs: number;
   thinking: ThinkingSettings;
+  stripThinkTags: "never" | "auto" | "always";
 }
 
 interface LanguageModelConfiguration {
@@ -1166,6 +1167,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
           authHeaders: buildOpenCodeGatewayAuthHeaders("messages", apiKey),
           capacityLimitedModelNotes: CAPACITY_LIMITED_MODEL_NOTES,
           onTransportSummary,
+          stripThinkTags: settings.stripThinkTags,
         });
         return;
       }
@@ -1192,7 +1194,8 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
           for (const toolCallId of toolCallIds) {
             this.reasoningContentByToolCallId.set(toolCallId, reasoningContent);
           }
-          }
+          },
+          stripThinkTags: settings.stripThinkTags,
         });
         this.log(`Request completed: model=${model.id}`);
         return;
@@ -1220,7 +1223,8 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
           for (const toolCallId of toolCallIds) {
             this.reasoningContentByToolCallId.set(toolCallId, reasoningContent);
           }
-          }
+          },
+          stripThinkTags: settings.stripThinkTags,
         });
         return;
       }
@@ -1246,7 +1250,8 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
           for (const toolCallId of toolCallIds) {
             this.reasoningContentByToolCallId.set(toolCallId, reasoningContent);
           }
-        }
+        },
+        stripThinkTags: settings.stripThinkTags,
       });
       this.log(`Request completed: model=${model.id}`);
     } catch (error) {
@@ -2511,7 +2516,8 @@ function getSettings(): ApiSettings {
       kimi: config.get<ThinkingSettings["kimi"]>("thinking.kimi", "off"),
       qwen: config.get<ThinkingSettings["qwen"]>("thinking.qwen", "off"),
       qwenBudget: config.get<ThinkingSettings["qwenBudget"]>("thinking.qwenBudget", "auto")
-    }
+    },
+    stripThinkTags: config.get<ApiSettings["stripThinkTags"]>("stripThinkTags", "auto"),
   };
 }
 

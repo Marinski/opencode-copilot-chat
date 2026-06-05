@@ -40,6 +40,16 @@ export interface StreamRequestOptions {
   onReasoningContent?: (toolCallIds: string[], reasoningContent: string) => void;
   capacityLimitedModelNotes?: Record<string, string>;
   onTransportSummary?: (summary: TransportRequestSummary) => void;
+  /**
+   * Controls whether to strip `<think>...</think>` tags from model output.
+   * When enabled, the inner content is accumulated as reasoning text instead
+   * of appearing as raw tags in the output.
+   *
+   * - `"never"`: pass through untouched.
+   * - `"auto"` (default): strip only for known reasoning models that inline think tags.
+   * - `"always"`: strip for all models.
+   */
+  stripThinkTags?: "never" | "auto" | "always";
 }
 
 export interface TransportRequestSummary {
@@ -68,15 +78,17 @@ export interface TransportRequestSummary {
 export async function streamChatCompletions(
   options: StreamRequestOptions,
 ): Promise<void> {
+  const stripThinkTagsEnabled = resolveStripThinkTags(options);
   const extractor = new OpenAiResponseExtractor(
     options.onReasoningContent,
     createReasoningDebugger(options.output, options.debugReasoning),
+    stripThinkTagsEnabled,
   );
 
   await streamOpenCodeResponse({
     ...options,
     extractStreamParts: (data) => extractor.extractStreamParts(data),
-    extractFullParts: extractChatCompletionParts,
+    extractFullParts: (data) => extractChatCompletionParts(data, stripThinkTagsEnabled),
   });
 
   extractor.flushReasoningFallback(
@@ -97,15 +109,17 @@ export async function streamChatCompletions(
 export async function streamAnthropicMessages(
   options: StreamRequestOptions,
 ): Promise<void> {
+  const stripThinkTagsEnabled = resolveStripThinkTags(options);
   const extractor = new AnthropicResponseExtractor(
     options.onReasoningContent,
     createReasoningDebugger(options.output, options.debugReasoning),
+    stripThinkTagsEnabled,
   );
 
   await streamOpenCodeResponse({
     ...options,
     extractStreamParts: (data) => extractor.extractStreamParts(data),
-    extractFullParts: extractAnthropicParts,
+    extractFullParts: (data) => extractAnthropicParts(data, stripThinkTagsEnabled),
   });
 
   extractor.flushReasoningFallback(
@@ -120,9 +134,11 @@ export async function streamAnthropicMessages(
 export async function streamResponsesApi(
   options: StreamRequestOptions,
 ): Promise<void> {
+  const stripThinkTagsEnabled = resolveStripThinkTags(options);
   const extractor = new OpenAiResponseExtractor(
     options.onReasoningContent,
     createReasoningDebugger(options.output, options.debugReasoning),
+    stripThinkTagsEnabled,
   );
 
   await streamOpenCodeResponse({
@@ -130,7 +146,10 @@ export async function streamResponsesApi(
     extractStreamParts: (data) =>
       extractor.extractStreamParts(normalizeResponsesStreamEvent(data)),
     extractFullParts: (data) =>
-      extractChatCompletionParts(normalizeResponsesFullResponse(data)),
+      extractChatCompletionParts(
+        normalizeResponsesFullResponse(data),
+        stripThinkTagsEnabled,
+      ),
   });
 
   extractor.flushReasoningFallback(
@@ -145,9 +164,11 @@ export async function streamResponsesApi(
 export async function streamGoogleGenerateContent(
   options: StreamRequestOptions,
 ): Promise<void> {
+  const stripThinkTagsEnabled = resolveStripThinkTags(options);
   const extractor = new OpenAiResponseExtractor(
     options.onReasoningContent,
     createReasoningDebugger(options.output, options.debugReasoning),
+    stripThinkTagsEnabled,
   );
 
   await streamOpenCodeResponse({
@@ -156,7 +177,10 @@ export async function streamGoogleGenerateContent(
     extractStreamParts: (data) =>
       extractor.extractStreamParts(normalizeGoogleStreamEvent(data)),
     extractFullParts: (data) =>
-      extractChatCompletionParts(normalizeGoogleFullResponse(data)),
+      extractChatCompletionParts(
+        normalizeGoogleFullResponse(data),
+        stripThinkTagsEnabled,
+      ),
   });
 
   extractor.flushReasoningFallback(
@@ -550,6 +574,9 @@ class OpenAiResponseExtractor {
   private reasoningContent = "";
   private emittedTextLength = 0;
   private emittedToolCallsCount = 0;
+  /** Buffer for <think> tag content that spans multiple streaming chunks */
+  private thinkOpenBuffer: string | null = null;
+  private readonly stripThinkTags: boolean;
 
   constructor(
     private readonly onReasoningContent?: (
@@ -557,7 +584,70 @@ class OpenAiResponseExtractor {
       reasoningContent: string,
     ) => void,
     private readonly onReasoningDebug?: (reasoningContent: string) => void,
-  ) {}
+    stripThinkTags: boolean = false,
+  ) {
+    this.stripThinkTags = stripThinkTags;
+  }
+
+  /**
+   * Processes streaming text to extract `<think>...</think>` tags.
+   * When `stripThinkTags` is enabled, the inner content is accumulated in
+   * `this.reasoningContent` and the tags themselves are stripped from output.
+   * Maintains a buffer for partial tags that span multiple chunks.
+   * When `stripThinkTags` is `false`, text is passed through unchanged.
+   */
+  private processThinkTagsStream(text: string): string {
+    if (!this.stripThinkTags) {
+      if (this.thinkOpenBuffer !== null) {
+        text = this.thinkOpenBuffer + text;
+        this.thinkOpenBuffer = null;
+      }
+      return text;
+    }
+
+    let result = "";
+
+    if (this.thinkOpenBuffer !== null) {
+      // Inside an unclosed <think>, looking for </think>
+      this.thinkOpenBuffer += text;
+      const closeIdx = this.thinkOpenBuffer.indexOf("</think>");
+      if (closeIdx >= 0) {
+        this.reasoningContent += this.thinkOpenBuffer.slice(0, closeIdx) + "\n";
+        const remaining = this.thinkOpenBuffer.slice(closeIdx + 8);
+        this.thinkOpenBuffer = null;
+        if (remaining) {
+          result += this.processThinkTagsStream(remaining);
+        }
+      }
+      return result;
+    }
+
+    // Not inside a think block, scan for <think>
+    let remaining = text;
+
+    while (true) {
+      const openIdx = remaining.indexOf("<think>");
+      if (openIdx < 0) {
+        result += remaining;
+        break;
+      }
+
+      result += remaining.slice(0, openIdx);
+      const afterOpen = remaining.slice(openIdx + 7);
+      const closeIdx = afterOpen.indexOf("</think>");
+
+      if (closeIdx >= 0) {
+        this.reasoningContent += afterOpen.slice(0, closeIdx) + "\n";
+        remaining = afterOpen.slice(closeIdx + 8);
+      } else {
+        // Unclosed <think> — buffer and stop
+        this.thinkOpenBuffer = afterOpen;
+        break;
+      }
+    }
+
+    return result;
+  }
 
   get emittedText(): number {
     return this.emittedTextLength;
@@ -584,7 +674,7 @@ class OpenAiResponseExtractor {
     const parts: vscode.LanguageModelResponsePart[] = [];
     const delta = first.delta;
     if (isRecord(delta)) {
-      const text = extractTextFromDelta(delta);
+      const text = this.processThinkTagsStream(extractTextFromDelta(delta));
       if (text) {
         this.emittedTextLength += text.length;
         parts.push(new vscode.LanguageModelTextPart(text));
@@ -598,7 +688,7 @@ class OpenAiResponseExtractor {
 
     const message = first.message;
     if (isRecord(message)) {
-      const text = extractTextFromDelta(message);
+      const text = this.processThinkTagsStream(extractTextFromDelta(message));
       if (text) {
         this.emittedTextLength += text.length;
         parts.push(new vscode.LanguageModelTextPart(text));
@@ -623,6 +713,15 @@ class OpenAiResponseExtractor {
     progress: vscode.Progress<vscode.LanguageModelResponsePart2>,
     localRequestId?: string,
   ): void {
+    // Flush any buffered <think> content that never closed
+    if (this.thinkOpenBuffer !== null) {
+      const buffered = this.thinkOpenBuffer.trim();
+      if (buffered) {
+        this.reasoningContent += buffered + "\n";
+      }
+      this.thinkOpenBuffer = null;
+    }
+
     const reasoning = this.reasoningContent.trim();
     if (!reasoning) {
       return;
@@ -710,6 +809,9 @@ class AnthropicResponseExtractor {
   private reasoningContent = "";
   private emittedTextLength = 0;
   private emittedToolCallsCount = 0;
+  /** Buffer for <think> tag content that spans multiple streaming chunks */
+  private thinkOpenBuffer: string | null = null;
+  private readonly stripThinkTags: boolean;
 
   constructor(
     private readonly onReasoningContent?: (
@@ -717,7 +819,65 @@ class AnthropicResponseExtractor {
       reasoningContent: string,
     ) => void,
     private readonly onReasoningDebug?: (reasoningContent: string) => void,
-  ) {}
+    stripThinkTags: boolean = false,
+  ) {
+    this.stripThinkTags = stripThinkTags;
+  }
+
+  /**
+   * Processes streaming text to extract `<think>...</think>` tags.
+   * When `stripThinkTags` is enabled, the inner content is accumulated in
+   * `this.reasoningContent` and the tags themselves are stripped from output.
+   * Maintains a buffer for partial tags that span multiple chunks.
+   * When `stripThinkTags` is `false`, text is passed through unchanged.
+   */
+  private processThinkTagsStream(text: string): string {
+    if (!this.stripThinkTags) {
+      if (this.thinkOpenBuffer !== null) {
+        text = this.thinkOpenBuffer + text;
+        this.thinkOpenBuffer = null;
+      }
+      return text;
+    }
+
+    let result = "";
+
+    if (this.thinkOpenBuffer !== null) {
+      this.thinkOpenBuffer += text;
+      const closeIdx = this.thinkOpenBuffer.indexOf("</think>");
+      if (closeIdx >= 0) {
+        this.reasoningContent += this.thinkOpenBuffer.slice(0, closeIdx) + "\n";
+        const remaining = this.thinkOpenBuffer.slice(closeIdx + 8);
+        this.thinkOpenBuffer = null;
+        if (remaining) {
+          result += this.processThinkTagsStream(remaining);
+        }
+      }
+      return result;
+    }
+
+    let remaining = text;
+    while (remaining.length > 0) {
+      const openIdx = remaining.indexOf("<think>");
+      if (openIdx === -1) {
+        result += remaining;
+        break;
+      }
+      result += remaining.slice(0, openIdx);
+      remaining = remaining.slice(openIdx + 7);
+
+      const closeIdx = remaining.indexOf("</think>");
+      if (closeIdx >= 0) {
+        this.reasoningContent += remaining.slice(0, closeIdx) + "\n";
+        remaining = remaining.slice(closeIdx + 8);
+      } else {
+        this.thinkOpenBuffer = remaining;
+        break;
+      }
+    }
+
+    return result;
+  }
 
   get emittedText(): number {
     return this.emittedTextLength;
@@ -765,8 +925,11 @@ class AnthropicResponseExtractor {
       } else if (contentBlock && contentBlock.type === "thinking" && typeof contentBlock.thinking === "string") {
         this.reasoningContent += contentBlock.thinking;
       } else if (contentBlock && typeof contentBlock.text === "string" && contentBlock.text.length > 0) {
-        this.emittedTextLength += contentBlock.text.length;
-        parts.push(new vscode.LanguageModelTextPart(contentBlock.text));
+        const text = this.processThinkTagsStream(contentBlock.text);
+        if (text) {
+          this.emittedTextLength += text.length;
+          parts.push(new vscode.LanguageModelTextPart(text));
+        }
       }
 
       return parts;
@@ -778,8 +941,11 @@ class AnthropicResponseExtractor {
     //    tool input delta: delta.type === "input_json_delta", delta.partial_json
     if (eventType === "content_block_delta" && delta) {
       if (delta.type === "text_delta" && typeof delta.text === "string" && delta.text.length > 0) {
-        this.emittedTextLength += delta.text.length;
-        parts.push(new vscode.LanguageModelTextPart(delta.text));
+        const text = this.processThinkTagsStream(delta.text);
+        if (text) {
+          this.emittedTextLength += text.length;
+          parts.push(new vscode.LanguageModelTextPart(text));
+        }
       } else if (delta.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking.length > 0) {
         this.reasoningContent += delta.thinking;
       } else if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
@@ -822,8 +988,11 @@ class AnthropicResponseExtractor {
     // or use a flat delta shape similar to the original extractor logic.
     if (delta) {
       if (typeof delta.text === "string" && delta.text.length > 0) {
-        this.emittedTextLength += delta.text.length;
-        parts.push(new vscode.LanguageModelTextPart(delta.text));
+        const text = this.processThinkTagsStream(delta.text);
+        if (text) {
+          this.emittedTextLength += text.length;
+          parts.push(new vscode.LanguageModelTextPart(text));
+        }
       }
 
       if (typeof delta.thinking === "string" && delta.thinking.length > 0) {
@@ -874,6 +1043,15 @@ class AnthropicResponseExtractor {
     progress: vscode.Progress<vscode.LanguageModelResponsePart2>,
     localRequestId?: string,
   ): void {
+    // Flush any buffered <think> content that never closed
+    if (this.thinkOpenBuffer !== null) {
+      const buffered = this.thinkOpenBuffer.trim();
+      if (buffered) {
+        this.reasoningContent += buffered + "\n";
+      }
+      this.thinkOpenBuffer = null;
+    }
+
     const reasoning = this.reasoningContent.trim();
     if (!reasoning) {
       return;
@@ -921,6 +1099,7 @@ class AnthropicResponseExtractor {
 
 function extractChatCompletionParts(
   data: unknown,
+  stripThinkTagsEnabled: boolean = true,
 ): vscode.LanguageModelResponsePart[] {
   if (!isRecord(data) || !Array.isArray(data.choices)) {
     return [];
@@ -936,7 +1115,9 @@ function extractChatCompletionParts(
   if (isRecord(message)) {
     const text = extractTextFromDelta(message);
     if (text) {
-      parts.push(new vscode.LanguageModelTextPart(text));
+      parts.push(new vscode.LanguageModelTextPart(
+        stripThinkTagsEnabled ? stripThinkTags(text) : text,
+      ));
     } else {
       const reasoning = extractReasoningFromDelta(message);
       if (reasoning.trim()) {
@@ -951,7 +1132,9 @@ function extractChatCompletionParts(
   }
 
   if (typeof first.text === "string") {
-    parts.push(new vscode.LanguageModelTextPart(first.text));
+    parts.push(new vscode.LanguageModelTextPart(
+      stripThinkTagsEnabled ? stripThinkTags(first.text) : first.text,
+    ));
   }
 
   return parts;
@@ -1009,7 +1192,76 @@ function extractReasoningFromDelta(delta: Record<string, unknown>): string {
   return collected;
 }
 
-function extractAnthropicParts(data: unknown): vscode.LanguageModelResponsePart[] {
+/**
+ * Models known to embed their reasoning inline in `<think>...</think>` tags
+ * inside the regular content field. Used by the `"auto"` stripThinkTags mode
+ * to avoid stripping on models that don't use this convention (preventing
+ * false positives on any legitimate use of those tags in regular output).
+ *
+ * Only models that have been confirmed to do this should be added here.
+ * Currently confirmed: minimax (MiniMax M3 and family).
+ */
+const KNOWN_INLINE_THINK_MODELS: readonly RegExp[] = [
+  /^minimax-/i,
+];
+
+/**
+ * Decides whether to strip `<think>...</think>` tags for a given model and
+ * user preference. Returns `true` only when stripping is safe to apply.
+ */
+function shouldStripThinkTags(
+  modelId: string,
+  mode: "never" | "auto" | "always" | undefined,
+): boolean {
+  if (mode === "always") {
+    return true;
+  }
+  if (mode === "never" || !mode) {
+    return false;
+  }
+  // "auto": only known inline-think models
+  return KNOWN_INLINE_THINK_MODELS.some((pattern) => pattern.test(modelId));
+}
+
+function resolveStripThinkTags(options: StreamRequestOptions): boolean {
+  return shouldStripThinkTags(options.modelId, options.stripThinkTags);
+}
+
+/**
+ * Strips `<think>...</think>` tags from text and returns only the content outside
+ * the tags. The inner thinking content is discarded (for non-streaming paths).
+ * For streaming, thinking content is captured by processThinkTagsStream.
+ * Handles multiple think blocks and unclosed tags.
+ */
+function stripThinkTags(text: string): string {
+  let result = "";
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    const openIdx = remaining.indexOf("<think>");
+    if (openIdx === -1) {
+      result += remaining;
+      break;
+    }
+    result += remaining.slice(0, openIdx);
+    remaining = remaining.slice(openIdx + 7);
+
+    const closeIdx = remaining.indexOf("</think>");
+    if (closeIdx >= 0) {
+      remaining = remaining.slice(closeIdx + 8);
+    } else {
+      // Unclosed <think> — discard rest
+      break;
+    }
+  }
+
+  return result;
+}
+
+function extractAnthropicParts(
+  data: unknown,
+  stripThinkTagsEnabled: boolean = true,
+): vscode.LanguageModelResponsePart[] {
   if (!isRecord(data) || !Array.isArray(data.content)) {
     return [];
   }
@@ -1036,7 +1288,9 @@ function extractAnthropicParts(data: unknown): vscode.LanguageModelResponsePart[
 
   const text = textParts.join("");
   if (text) {
-    parts.unshift(new vscode.LanguageModelTextPart(text));
+    parts.unshift(new vscode.LanguageModelTextPart(
+      stripThinkTagsEnabled ? stripThinkTags(text) : text,
+    ));
   }
 
   return parts;
