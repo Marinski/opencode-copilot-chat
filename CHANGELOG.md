@@ -2,6 +2,15 @@
 
 All notable changes to the **OpenCode Go BYOK Provider** extension are documented here.
 
+## [0.1.10] — 2026-06-05
+
+### Fixed
+
+- Fixed Qwen models returning 401 error ("Model qwen3.7-max is not supported for format oa-compat"). Qwen models on the OpenCode Go gateway are only available through the Anthropic Messages API endpoint, not the OpenAI chat-completions endpoint. Reverted the routing while fixing the actual root cause.
+- Fixed Anthropic streaming tool call parsing in `AnthropicResponseExtractor`. The extractor now correctly handles Anthropic SSE event types (`content_block_start` with `tool_use` blocks, `content_block_delta` with `input_json_delta`, `message_delta`, `message_stop`) so Qwen tool calls are properly captured and surfaced to VS Code Copilot Chat.
+- Fixed Anthropic usage metadata parsing. Added support for Anthropic-native fields (`input_tokens`, `output_tokens`, `cache_read_input_tokens`) in addition to OpenAI fields, so the context window indicator updates correctly for Qwen models routed through the messages endpoint.
+- Fixed Qwen thinking payload format when routed through the Anthropic messages endpoint. Qwen thinking settings are now translated to Anthropic-native format (`{ type: "enabled"|"disabled" }`) instead of Qwen-native `enable_thinking` boolean, matching what the OpenCode gateway expects.
+
 ## [0.1.9] — 2026-06-04
 
 ### Fixed

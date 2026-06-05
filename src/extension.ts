@@ -1283,7 +1283,14 @@ function buildAnthropicMessagesRequestBody(
   limits: ModelLimits,
 ): Record<string, unknown> {
   const tools = mapAnthropicTools(options.tools);
-  const thinkingPayload = buildThinkingPayload(modelId, settings.thinking, messagesHaveImages(messages));
+  const rawThinkingPayload = buildThinkingPayload(modelId, settings.thinking, messagesHaveImages(messages));
+  // Qwen models routed to the Anthropic messages endpoint need thinking in
+  // Anthropic-native format ({ type: "enabled"|"disabled" }) rather than the
+  // Qwen-native enable_thinking boolean. If the payload contains
+  // enable_thinking, translate it; otherwise pass through as-is.
+  const thinkingPayload = /^qwen3(?:\.|-)/i.test(modelId) && ("enable_thinking" in rawThinkingPayload || "thinking_budget" in rawThinkingPayload)
+    ? buildQwenAnthropicThinkingPayload(settings.thinking)
+    : rawThinkingPayload;
   const anthropicMessages = buildAnthropicMessages(messages);
 
   return {
@@ -2393,6 +2400,27 @@ function buildThinkingPayload(modelId: string, thinking: ThinkingSettings, hasIm
     return { enable_thinking: false };
   }
 
+  return {};
+}
+
+// Translates Qwen thinking settings into Anthropic-native format when Qwen
+// models are routed through the Anthropic messages endpoint. The gateway
+// expects { type: "enabled"|"disabled" } with an optional budget_tokens field,
+// matching the Anthropic thinking API contract.
+function buildQwenAnthropicThinkingPayload(thinking: ThinkingSettings): Record<string, unknown> {
+  if (thinking.qwen === "on") {
+    const budget = thinking.qwenBudget === "auto" ? undefined : Number(thinking.qwenBudget);
+    return {
+      thinking: {
+        type: "enabled",
+        ...(budget !== undefined ? { budget_tokens: budget } : {}),
+      },
+    };
+  }
+  if (thinking.qwen === "off") {
+    return { thinking: { type: "disabled" } };
+  }
+  // "auto" — let the provider decide; send no thinking directive.
   return {};
 }
 

@@ -2,7 +2,7 @@
   "name": "opencode-copilot-chat",
   "displayName": "OpenCode Copilot Chat",
   "description": "Bring your own OpenCode API key to VS Code Copilot Chat. Adds OpenCode Go and OpenCode Zen models through the Language Model Chat Provider API.",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "publisher": "ltmoerdani",
   "license": "MIT",
   "icon": "media/opencodego.png",

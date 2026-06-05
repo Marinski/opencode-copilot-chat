@@ -737,59 +737,134 @@ class AnthropicResponseExtractor {
     }
 
     const parts: vscode.LanguageModelResponsePart[] = [];
-    const delta = data.delta;
-    if (!isRecord(delta)) {
-      return parts;
-    }
+    const eventType = typeof data.type === "string" ? data.type : "";
+    const delta = isRecord(data.delta) ? data.delta : undefined;
 
-    if (typeof delta.text === "string" && delta.text.length > 0) {
-      this.emittedTextLength += delta.text.length;
-      parts.push(new vscode.LanguageModelTextPart(delta.text));
-    }
+    // --- Handle Anthropic SSE event types ---
 
-    if (typeof delta.thinking === "string" && delta.thinking.length > 0) {
-      this.reasoningContent += delta.thinking;
-    }
+    // 1. content_block_start: contains the initial content block info.
+    //    For tool_use blocks, the id and name are in data.content_block.
+    //    For text blocks, data.content_block.text may contain initial text.
+    if (eventType === "content_block_start") {
+      const contentBlock = isRecord(data.content_block) ? data.content_block : undefined;
+      const index = typeof data.index === "number" ? data.index : this.pendingToolCalls.size;
 
-    if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) {
-      this.reasoningContent += delta.reasoning_content;
-    }
-
-    if (typeof delta.reasoning === "string" && delta.reasoning.length > 0) {
-      this.reasoningContent += delta.reasoning;
-    }
-
-    if (typeof delta.type === "string") {
-      if (delta.type === "tool_use") {
-        const index = typeof delta.index === "number" ? delta.index : this.pendingToolCalls.size;
+      if (contentBlock && contentBlock.type === "tool_use") {
         const pending = this.pendingToolCalls.get(index) ?? {
           id: "",
           name: "",
           arguments: "",
         };
-        if (typeof delta.id === "string") {
-          pending.id = delta.id;
+        if (typeof contentBlock.id === "string") {
+          pending.id = contentBlock.id;
         }
-        if (typeof delta.name === "string") {
-          pending.name += delta.name;
+        if (typeof contentBlock.name === "string") {
+          pending.name += contentBlock.name;
         }
-        if (typeof delta.input === "string") {
-          pending.arguments += delta.input;
-        } else if (isRecord(delta.input)) {
-          pending.arguments += JSON.stringify(delta.input);
-        }
+        this.pendingToolCalls.set(index, pending);
+      } else if (contentBlock && contentBlock.type === "thinking" && typeof contentBlock.thinking === "string") {
+        this.reasoningContent += contentBlock.thinking;
+      } else if (contentBlock && typeof contentBlock.text === "string" && contentBlock.text.length > 0) {
+        this.emittedTextLength += contentBlock.text.length;
+        parts.push(new vscode.LanguageModelTextPart(contentBlock.text));
+      }
+
+      return parts;
+    }
+
+    // 2. content_block_delta: streaming deltas for the current block.
+    //    text delta: delta.type === "text_delta", delta.text
+    //    thinking delta: delta.type === "thinking_delta", delta.thinking
+    //    tool input delta: delta.type === "input_json_delta", delta.partial_json
+    if (eventType === "content_block_delta" && delta) {
+      if (delta.type === "text_delta" && typeof delta.text === "string" && delta.text.length > 0) {
+        this.emittedTextLength += delta.text.length;
+        parts.push(new vscode.LanguageModelTextPart(delta.text));
+      } else if (delta.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking.length > 0) {
+        this.reasoningContent += delta.thinking;
+      } else if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
+        const index = typeof data.index === "number" ? data.index : this.pendingToolCalls.size - 1;
+        const pending = this.pendingToolCalls.get(index) ?? {
+          id: "",
+          name: "",
+          arguments: "",
+        };
+        pending.arguments += delta.partial_json;
         this.pendingToolCalls.set(index, pending);
       }
 
-      if (delta.type === "message_delta" && isRecord(data.usage)) {
-        updateRequestUsageSummary(this as unknown as RequestUsageSummary, data);
-      }
+      return parts;
     }
 
-    if (data.type === "message_stop" || delta.stop_reason) {
+    // 3. message_delta: contains stop_reason and usage.
+    if (eventType === "message_delta" && delta) {
+      if (isRecord(data.usage)) {
+        updateRequestUsageSummary(this as unknown as RequestUsageSummary, data);
+      }
+      if (delta.stop_reason) {
+        const toolParts = this.flushToolCalls();
+        this.emittedToolCallsCount += toolParts.length;
+        parts.push(...toolParts);
+      }
+      return parts;
+    }
+
+    // 4. message_stop: final event, flush any remaining tool calls.
+    if (eventType === "message_stop") {
       const toolParts = this.flushToolCalls();
       this.emittedToolCallsCount += toolParts.length;
       parts.push(...toolParts);
+      return parts;
+    }
+
+    // --- Fallback: handle non-standard or flat SSE shapes ---
+    // Some providers may send Anthropic-style data without explicit event types,
+    // or use a flat delta shape similar to the original extractor logic.
+    if (delta) {
+      if (typeof delta.text === "string" && delta.text.length > 0) {
+        this.emittedTextLength += delta.text.length;
+        parts.push(new vscode.LanguageModelTextPart(delta.text));
+      }
+
+      if (typeof delta.thinking === "string" && delta.thinking.length > 0) {
+        this.reasoningContent += delta.thinking;
+      }
+      if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) {
+        this.reasoningContent += delta.reasoning_content;
+      }
+      if (typeof delta.reasoning === "string" && delta.reasoning.length > 0) {
+        this.reasoningContent += delta.reasoning;
+      }
+
+      if (typeof delta.type === "string") {
+        // Flat tool_use delta (non-standard but some gateways use this)
+        if (delta.type === "tool_use") {
+          const index = typeof delta.index === "number" ? delta.index : this.pendingToolCalls.size;
+          const pending = this.pendingToolCalls.get(index) ?? {
+            id: "",
+            name: "",
+            arguments: "",
+          };
+          if (typeof delta.id === "string") {
+            pending.id = delta.id;
+          }
+          if (typeof delta.name === "string") {
+            pending.name += delta.name;
+          }
+          if (typeof delta.input === "string") {
+            pending.arguments += delta.input;
+          } else if (isRecord(delta.input)) {
+            pending.arguments += JSON.stringify(delta.input);
+          }
+          this.pendingToolCalls.set(index, pending);
+        }
+      }
+
+      if (delta.stop_reason) {
+        const toolParts = this.flushToolCalls();
+        this.emittedToolCallsCount += toolParts.length;
+        parts.push(...toolParts);
+      }
     }
 
     return parts;
@@ -1017,6 +1092,7 @@ function updateRequestUsageSummary(
 
   const usage = isRecord(data.usage) ? data.usage : undefined;
   if (usage) {
+    // OpenAI-compatible fields
     const promptTokens =
       typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : undefined;
     const completionTokens =
@@ -1034,18 +1110,44 @@ function updateRequestUsageSummary(
         ? promptTokenDetails.cached_tokens
         : undefined;
 
+    // Anthropic-compatible fields (input_tokens / output_tokens)
+    const anthropicInputTokens =
+      typeof usage.input_tokens === "number" ? usage.input_tokens : undefined;
+    const anthropicOutputTokens =
+      typeof usage.output_tokens === "number" ? usage.output_tokens : undefined;
+    const cacheCreationInputTokens =
+      typeof usage.cache_creation_input_tokens === "number"
+        ? usage.cache_creation_input_tokens
+        : undefined;
+    const cacheReadInputTokens =
+      typeof usage.cache_read_input_tokens === "number"
+        ? usage.cache_read_input_tokens
+        : undefined;
+
     if (promptTokens !== undefined) {
       summary.promptTokens = promptTokens;
+    } else if (anthropicInputTokens !== undefined) {
+      summary.promptTokens = anthropicInputTokens;
     }
     if (completionTokens !== undefined) {
       summary.completionTokens = completionTokens;
+    } else if (anthropicOutputTokens !== undefined) {
+      summary.completionTokens = anthropicOutputTokens;
     }
     if (totalTokens !== undefined) {
       summary.totalTokens = totalTokens;
     }
     if (cachedTokens !== undefined) {
       summary.cachedTokens = cachedTokens;
+    } else if (cacheReadInputTokens !== undefined) {
+      summary.cachedTokens = cacheReadInputTokens;
     }
+  }
+
+  // Anthropic message_delta reports stop_reason in delta, not in choices
+  const delta = isRecord(data.delta) ? data.delta : undefined;
+  if (delta && typeof delta.stop_reason === "string") {
+    summary.finishReason = delta.stop_reason;
   }
 
   const firstChoice =
