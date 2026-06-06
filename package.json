@@ -43,7 +43,6 @@
     "onCommand:opencodezen.diagnostics",
     "onCommand:opencodego.modelPickerDiagnostics",
     "onCommand:opencodego.setThinkingEffort",
-    "onCommand:opencodego.showUsage",
     "onLanguageModelChatProvider:opencodego",
     "onLanguageModelChatProvider:opencodezen"
   ],
