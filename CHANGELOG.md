@@ -2,6 +2,12 @@
 
 All notable changes to the **OpenCode Go BYOK Provider** extension are documented here.
 
+## [0.2.1] — 2026-06-06
+
+### Removed
+
+- Removed the unused `opencodego.showUsage` command, `showGoUsagePanel` WebView panel, and related activation event. The Go Usage Tracker details are still accessible via the status bar indicator (`Go: XX%·XX%·XX%`). The separate Quick Pick panel was removed because the status bar already provides glanceable usage data and the dedicated panel added unnecessary code complexity without proportional user benefit.
+
 ## [0.2.0] — 2026-06-05
 
 ### Added

@@ -23,19 +23,56 @@ This lets you pick and use OpenCode models directly from the Copilot Chat model 
 
 ## ✨ Features
 
-- **BYOK** — configure OpenCode Go and OpenCode Zen independently with separate API keys, both active at the same time
-- **Live model list** — fetches available Go models and Zen models directly from OpenCode on every startup
-- **TTL-cached metadata** — merges live `/models` metadata with a 6-hour models.dev snapshot to resolve context window, output limits, image support, and deprecation state
-- **Bundled fallback** — keeps the picker usable offline with an internal fallback catalog when live metadata cannot be refreshed yet
-- **Tool-calling support** — forwards tool schemas using the request shape each routed model family expects
-- **Native transport compatibility** — routes Zen GPT to `/responses`, Zen Gemini to the documented Google-style endpoint, Zen Claude to `/messages`, Go MiniMax to `/messages`, and the remaining models (including all Qwen families) to `/chat/completions`
-- **Cost and pricing metadata** — exposes per-model input, output, and cache costs from the live models.dev registry so the VS Code model picker can display real pricing
-- **Modality detection** — surfaces audio, video, and PDF input support in model tooltips alongside the existing vision indicator
-- **Per-model Thinking controls** — configurable reasoning effort for DeepSeek, GLM, Kimi, and Qwen model families via dedicated settings
-- **Safer requests** — adds sticky routing headers plus request and stream idle timeouts with clearer rate-limit/quota errors in VS Code
-- **Diagnostics commands** — one-click markdown report showing exactly which models VS Code has registered, a model picker diagnostic across all vendors, and recent request summaries for transport, tokens, latency, and errors
-- **Usage status bar** — shows the latest prompt/output/total/cache summary after each OpenCode response
-- **Normalized usage markers** — emits a normalized usage data part for each response so future Copilot/BYOK integrations can consume prompt/output/cache metadata directly
+### Provider & Configuration
+
+- **Dual BYOK providers** — configure **OpenCode Go** (paid) and **OpenCode Zen** (free/paid) independently with separate API keys. Both providers can be active at the same time and you switch between them from the model picker.
+- **Live model registry** — fetches the latest Go and Zen model lists directly from `opencode.ai` on every startup, so new models appear automatically.
+- **TTL-cached metadata** — merges live `/models` metadata with a 6-hour **models.dev snapshot** (cached in VS Code `globalState`) to resolve context window, output limits, image support, pricing, and deprecation state for every model.
+- **Bundled fallback catalog** — ships an internal fallback table so the model picker stays usable offline when the live registry cannot be reached.
+- **Per-provider model limits** — Go and Zen model limits are tracked separately so models shared across providers (e.g. `qwen3.6-plus`, `glm-5.1`) use the correct context/output values for each provider.
+
+### Smart Routing
+
+- **Native endpoint routing** — each model family is sent through the transport it expects:
+  - **Zen GPT** → `/responses`
+  - **Zen Gemini** → Google-style `streamGenerateContent?alt=sse`
+  - **Zen Claude** + **Go MiniMax** → `/messages` (Anthropic-compatible)
+  - **All other models** (Qwen, DeepSeek, GLM, Kimi, MiMo, etc.) → `/chat/completions`
+- **Tool-calling support** — forwards VS Code tool schemas using the correct format for each endpoint (OpenAI `tool_calls` or Anthropic `tool_use` content blocks), so Copilot Agent can read files, search, edit, and run terminal commands through any OpenCode model.
+- **Sticky routing headers** — adds `x-opencode-session`, `x-opencode-request`, and `x-opencode-client` headers to preserve gateway affinity across requests.
+- **Request & stream timeouts** — configurable total request timeout (default 600s) and stream idle timeout (default 120s) so hanging requests fail cleanly.
+
+### Pricing & Model Intelligence
+
+- **Cost metadata** — exposes per-model `inputCost`, `outputCost`, `cacheCost`, and `priceCategory` from the live `models.dev` registry, so the VS Code model picker and Language Models view display real pricing (converted from USD to AI Credits at 1 USD = 100 credits).
+- **Modality detection** — surfaces **audio**, **video**, and **PDF input** support in model tooltips and detail badges alongside the existing vision indicator, sourced from live `models.dev` metadata.
+
+### Thinking & Reasoning Controls
+
+- **Per-model Thinking configuration** — dedicated settings for each model family:
+  - **DeepSeek**: `off` / `high` / `max`
+  - **GLM**: `on` / `off`
+  - **Kimi**: `on` / `off`
+  - **Qwen**: `auto` / `on` / `off` + optional `thinking_budget` (`4096`–`81920`)
+- **`opencodego.debugReasoning`** — writes provider `reasoning_content` to the **Output → OpenCode** channel for debugging thinking-mode responses.
+
+### Usage Tracking
+
+- **Go Usage Tracker** — real-time tracking of OpenCode Go subscription limits as percentages in the status bar:
+  - Tracks **5-hour rolling** ($12), **weekly** ($30), and **monthly** ($60) subscription tiers.
+  - Calculates client-side cost from token usage × per-model pricing (input, output, cache_read).
+  - Status bar indicator (`Go: 27%·62%·75%`) shows all three periods at a glance, with ⚠ warning when any period exceeds 80%.
+  - Usage log persisted in VS Code `globalState` so data survives editor restarts.
+- **Response usage bar** — shows the latest prompt/output/total/cache summary in the status bar after each OpenCode response.
+- **Normalized usage DataPart** — emits a normalized `LanguageModelDataPart` with `usage` MIME for each response, so Copilot Chat's context window widget and future BYOK integrations can consume prompt/output/cache metadata without re-parsing raw transport logs.
+- **Context window hook** — bridges real BYOK token usage back to VS Code's internal chat request IDs so the Copilot Chat footer displays accurate context usage for OpenCode models.
+
+### Diagnostics & Debugging
+
+- **OpenCode Go: Diagnostics** — one-click markdown report of all registered Go models, their metadata, and recent Go request summaries (endpoint, tokens, latency, errors).
+- **OpenCode Zen: Diagnostics** — same for Zen models and Zen request summaries.
+- **OpenCode: Model Picker Diagnostics** — shows all registered models across OpenCode Go, Zen, and Copilot vendors with full metadata side-by-side.
+- **Provider transport history** — persists recent request summaries (endpoint, initiator, metadata source, request IDs, token usage, latency, errors) in VS Code `globalState`, viewable in diagnostics reports.
 
 ---
 
