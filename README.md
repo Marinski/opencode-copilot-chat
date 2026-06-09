@@ -53,7 +53,9 @@ This lets you pick and use OpenCode models directly from the Copilot Chat model 
   - **DeepSeek**: `off` / `high` / `max`
   - **GLM**: `on` / `off`
   - **Kimi**: `on` / `off`
+  - **Mimo (Xiaomi)**: `on` / `off`
   - **Qwen**: `auto` / `on` / `off` + optional `thinking_budget` (`4096`–`81920`)
+- **Dynamic fallback** — any model with `reasoning: true` in its metadata automatically gets a generic `off`/`on` Thinking Effort control, so future reasoning-capable models work without hardcoded mappings.
 - **`opencodego.debugReasoning`** — writes provider `reasoning_content` to the **Output → OpenCode** channel for debugging thinking-mode responses.
 
 ### Usage Tracking

@@ -141,6 +141,12 @@
           "default": "off",
           "markdownDescription": "Thinking mode for Kimi models (`kimi-k2.5`, `kimi-k2.6`). Maps to `thinking: { type: 'enabled' | 'disabled' }`."
         },
+        "opencodego.thinking.mimo": {
+          "type": "string",
+          "enum": ["on", "off"],
+          "default": "off",
+          "markdownDescription": "Thinking mode for Mimo (Xiaomi) models. Maps to `reasoning_effort`. `on` enables reasoning via `reasoning_content`."
+        },
         "opencodego.thinking.qwen": {
           "type": "string",
           "enum": ["auto", "on", "off"],

@@ -493,5 +493,5 @@ function positiveNumber(value: unknown): number | undefined {
 }
 
 function supportsReasoning(modelId: string): boolean {
-  return /^(deepseek-|glm-|kimi-|qwen3(?:\.|-))/i.test(modelId);
+  return /^(deepseek-|glm-|kimi-|qwen3(?:\.|-)|mimo-)/i.test(modelId);
 }

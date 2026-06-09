@@ -250,6 +250,7 @@ interface ThinkingSettings {
   kimi: "on" | "off";
   qwen: "auto" | "on" | "off";
   qwenBudget: "auto" | "4096" | "16384" | "32768" | "81920";
+  mimo: "off" | "on";
 }
 
 interface ApiSettings {
@@ -468,6 +469,7 @@ async function showThinkingEffortPicker(): Promise<void> {
     { label: "DeepSeek (deepseek-v4-*)", key: "deepseek", options: ["off", "high", "max"] },
     { label: "GLM (glm-5, glm-5.1)", key: "glm", options: ["on", "off"] },
     { label: "Kimi (kimi-k2.*)", key: "kimi", options: ["on", "off"] },
+    { label: "Mimo (mimo-v2.*)", key: "mimo", options: ["on", "off"] },
     { label: "Qwen (qwen3.*)", key: "qwen", options: ["auto", "on", "off"] },
     { label: "Qwen Thinking Budget", key: "qwenBudget", options: ["auto", "4096", "16384", "32768", "81920"] }
   ];
@@ -1035,7 +1037,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       const modalityBadges = formatModalityBadges(metadata);
       const baseDetail = this.definition.vendor === ZEN_VENDOR && isFreeZenModel(modelId) ? "Free" : this.definition.displayName;
       const baseTooltip = `${this.definition.displayName} model: ${modelId}`;
-      const configurationSchema = modelConfigurationSchema(modelId);
+      const configurationSchema = modelConfigurationSchema(modelId, metadata);
 
       const info: OpenCodeModel = {
         id: effectiveModelId,
@@ -2294,21 +2296,27 @@ function hasMessagePayload(message: ApiMessage): boolean {
 // Detect which Thinking family a raw model id belongs to. Used both to render
 // the per-model picker submenu (configurationSchema) and to map the user's
 // per-request selection back to the right OpenCode request field.
-type ThinkingFamily = "deepseek" | "glm" | "kimi" | "qwen" | null;
+type ThinkingFamily = "deepseek" | "glm" | "kimi" | "qwen" | "mimo" | null;
 function thinkingFamily(modelId: string): ThinkingFamily {
   if (/^deepseek-/i.test(modelId)) return "deepseek";
   if (/^glm-/i.test(modelId)) return "glm";
   if (/^kimi-/i.test(modelId)) return "kimi";
   if (/^qwen3(?:\.|-)/i.test(modelId)) return "qwen";
+  if (/^mimo-/i.test(modelId)) return "mimo";
   return null;
 }
 
 // Per-family JSON-Schema describing the native model-picker controls rendered
 // by VS Code 1.120. Keep the primary property name aligned with VS Code's
 // BYOK reasoning control so builds with narrower assumptions still recognize it.
-function modelConfigurationSchema(modelId: string): vscode.LanguageModelConfigurationSchema | undefined {
+// Accepts optional metadata for dynamic fallback: any model with
+// `reasoning: true` in its resolved metadata gets a generic off/on schema
+// even if no hardcoded family match exists.
+function modelConfigurationSchema(
+  modelId: string,
+  metadata?: ResolvedModelMetadata,
+): vscode.LanguageModelConfigurationSchema | undefined {
   const family = thinkingFamily(modelId);
-  if (!family) return undefined;
 
   if (family === "deepseek") {
     return {
@@ -2323,6 +2331,26 @@ function modelConfigurationSchema(modelId: string): vscode.LanguageModelConfigur
             "Fastest responses",
             "More reasoning",
             "Maximum reasoning"
+          ],
+          default: "off",
+          group: "navigation"
+        }
+      }
+    };
+  }
+
+  if (family === "mimo") {
+    return {
+      type: "object",
+      properties: {
+        reasoningEffort: {
+          type: "string",
+          title: "Thinking Effort",
+          enum: ["off", "on"],
+          enumItemLabels: ["Off", "On"],
+          enumDescriptions: [
+            "Fastest responses",
+            "Enable reasoning"
           ],
           default: "off",
           group: "navigation"
@@ -2351,39 +2379,64 @@ function modelConfigurationSchema(modelId: string): vscode.LanguageModelConfigur
     };
   }
 
-  // qwen
-  return {
-    type: "object",
-    properties: {
-      reasoningEffort: {
-        type: "string",
-        title: "Thinking Effort",
-        enum: ["off", "auto", "on"],
-        enumItemLabels: ["Off", "Auto", "On"],
-        enumDescriptions: [
-          "Fastest responses",
-          "Model decides",
-          "Enable thinking"
-        ],
-        default: "off",
-        group: "navigation"
-      },
-      thinkingBudget: {
-        type: "string",
-        title: "Thinking Budget",
-        enum: ["auto", "4096", "16384", "32768", "81920"],
-        enumItemLabels: ["Auto", "4K", "16K", "32K", "80K"],
-        enumDescriptions: [
-          "Provider default",
-          "Small budget",
-          "Medium budget",
-          "Large budget",
-          "Maximum budget"
-        ],
-        default: "auto"
+  if (family === "qwen") {
+    return {
+      type: "object",
+      properties: {
+        reasoningEffort: {
+          type: "string",
+          title: "Thinking Effort",
+          enum: ["off", "auto", "on"],
+          enumItemLabels: ["Off", "Auto", "On"],
+          enumDescriptions: [
+            "Fastest responses",
+            "Model decides",
+            "Enable thinking"
+          ],
+          default: "off",
+          group: "navigation"
+        },
+        thinkingBudget: {
+          type: "string",
+          title: "Thinking Budget",
+          enum: ["auto", "4096", "16384", "32768", "81920"],
+          enumItemLabels: ["Auto", "4K", "16K", "32K", "80K"],
+          enumDescriptions: [
+            "Provider default",
+            "Small budget",
+            "Medium budget",
+            "Large budget",
+            "Maximum budget"
+          ],
+          default: "auto"
+        }
       }
-    }
-  };
+    };
+  }
+
+  // Dynamic fallback: any model with reasoning capability gets a generic
+  // off/on control, so future reasoning models work without hardcoding.
+  if (metadata?.reasoning) {
+    return {
+      type: "object",
+      properties: {
+        reasoningEffort: {
+          type: "string",
+          title: "Thinking Effort",
+          enum: ["off", "on"],
+          enumItemLabels: ["Off", "On"],
+          enumDescriptions: [
+            "Fastest responses",
+            "Enable reasoning"
+          ],
+          default: "off",
+          group: "navigation"
+        }
+      }
+    };
+  }
+
+  return undefined;
 }
 
 // Merge per-request modelConfiguration (from the Copilot Chat submenu) onto
@@ -2419,6 +2472,11 @@ function applyRequestThinkingOverride(
   }
   if (family === "kimi" && typeof reasoningEffort === "string") {
     if (reasoningEffort === "on" || reasoningEffort === "off") next.kimi = reasoningEffort;
+  }
+  if (family === "mimo") {
+    if (typeof reasoningEffort === "string" && (reasoningEffort === "on" || reasoningEffort === "off")) {
+      next.mimo = reasoningEffort;
+    }
   }
   if (family === "qwen") {
     if (typeof thinkingMode === "string" && (thinkingMode === "auto" || thinkingMode === "on" || thinkingMode === "off")) {
@@ -2481,7 +2539,8 @@ function getSettings(): ApiSettings {
       glm: config.get<ThinkingSettings["glm"]>("thinking.glm", "off"),
       kimi: config.get<ThinkingSettings["kimi"]>("thinking.kimi", "off"),
       qwen: config.get<ThinkingSettings["qwen"]>("thinking.qwen", "off"),
-      qwenBudget: config.get<ThinkingSettings["qwenBudget"]>("thinking.qwenBudget", "auto")
+      qwenBudget: config.get<ThinkingSettings["qwenBudget"]>("thinking.qwenBudget", "auto"),
+      mimo: config.get<ThinkingSettings["mimo"]>("thinking.mimo", "off"),
     },
     stripThinkTags: config.get<ApiSettings["stripThinkTags"]>("stripThinkTags", "auto"),
   };
@@ -2525,6 +2584,14 @@ function buildThinkingPayload(modelId: string, thinking: ThinkingSettings, hasIm
         : { enable_thinking: true, thinking_budget: Number(thinking.qwenBudget) };
     }
     return { enable_thinking: false };
+  }
+
+  if (/^mimo-/i.test(modelId)) {
+    // Mimo models use OpenAI-compatible chat-completions with reasoning_content.
+    if (thinking.mimo === "off") {
+      return {};
+    }
+    return { reasoning_effort: "high" };
   }
 
   return {};
