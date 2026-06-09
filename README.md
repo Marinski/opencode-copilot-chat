@@ -53,6 +53,7 @@ This lets you pick and use OpenCode models directly from the Copilot Chat model 
   - **DeepSeek**: `off` / `low` / `medium` / `high` / `max`
   - **GLM**: `on` / `off`
   - **Kimi**: `on` / `off`
+  - **MiniMax**: `off` / `on`
   - **Mimo (Xiaomi)**: `off` / `low` / `medium` / `high`
   - **Qwen**: `auto` / `on` / `off` + optional `thinking_budget` (`4096`–`81920`)
   - **Dynamic from models.dev** — when `models.dev` provides explicit `reasoning_options` for a model (e.g. `[{type:"effort",values:["low","medium","high","max"]}]`), the picker renders the exact options the model supports, overriding any hardcoded defaults.

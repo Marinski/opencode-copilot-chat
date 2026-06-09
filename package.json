@@ -139,7 +139,13 @@
           "type": "string",
           "enum": ["on", "off"],
           "default": "off",
-          "markdownDescription": "Thinking mode for Kimi models (`kimi-k2.5`, `kimi-k2.6`). Maps to `thinking: { type: 'enabled' | 'disabled' }`."
+          "markdownDescription": "Thinking mode for Kimi models (`kimi-k2.5`, `kimi-k2.6`). Maps to `enable_thinking: true | false` (MoonshotAI-native boolean on the OpenAI-compatible endpoint)."
+        },
+        "opencodego.thinking.minimax": {
+          "type": "string",
+          "enum": ["off", "on"],
+          "default": "off",
+          "markdownDescription": "Thinking mode for MiniMax models (`minimax-m2.5`, `minimax-m3`, etc.). Maps to `thinking: { type: 'disabled'|'adaptive'|'enabled' }`. The OpenCode gateway only supports on/off for this family (`reasoning_effort` is silently ignored)."
         },
         "opencodego.thinking.mimo": {
           "type": "string",

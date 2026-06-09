@@ -160,8 +160,11 @@ const MODEL_LIMITS_BY_PROVIDER: Record<ProviderVendor, Record<string, BaseModelL
     "kimi-k2.5": { contextWindow: 262144, maxOutputTokens: 65536 },
     "glm-5.1": { contextWindow: 202752, maxOutputTokens: 32768 },
     "glm-5": { contextWindow: 202752, maxOutputTokens: 32768 },
+    "minimax-m3": { contextWindow: 512000, maxOutputTokens: 131072 },
     "minimax-m2.7": { contextWindow: 204800, maxOutputTokens: 131072 },
     "minimax-m2.5": { contextWindow: 204800, maxOutputTokens: 65536 },
+    "minimax-m2.1": { contextWindow: 204800, maxOutputTokens: 131072 },
+    "minimax-m2": { contextWindow: 204800, maxOutputTokens: 131072 },
     "qwen3.7-max": { contextWindow: 1000000, maxOutputTokens: 65536 },
     "qwen3.6-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
     "qwen3.5-plus": { contextWindow: 262144, maxOutputTokens: 65536 },
@@ -551,7 +554,7 @@ function positiveNumber(value: unknown): number | undefined {
 }
 
 function supportsReasoning(modelId: string): boolean {
-  return /^(deepseek-|glm-|kimi-|qwen3(?:\.|-)|mimo-)/i.test(modelId);
+  return /^(deepseek-|glm-|kimi-|minimax-|qwen3(?:\.|-)|mimo-)/i.test(modelId);
 }
 
 // ---------------------------------------------------------------------------

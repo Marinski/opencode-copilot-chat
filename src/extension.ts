@@ -261,6 +261,7 @@ interface ThinkingSettings {
   deepseek: "off" | "low" | "medium" | "high" | "max";
   glm: "on" | "off";
   kimi: "on" | "off";
+  minimax: "off" | "on";
   qwen: "auto" | "on" | "off";
   qwenBudget: "auto" | "4096" | "16384" | "32768" | "81920";
   mimo: "off" | "low" | "medium" | "high";
@@ -483,6 +484,7 @@ async function showThinkingEffortPicker(): Promise<void> {
     { label: "GLM (glm-5, glm-5.1)", key: "glm", options: ["on", "off"] },
     { label: "Kimi (kimi-k2.*)", key: "kimi", options: ["on", "off"] },
     { label: "Mimo (mimo-v2.*)", key: "mimo", options: ["off", "low", "medium", "high"] },
+    { label: "MiniMax (minimax-m*)", key: "minimax", options: ["off", "on"] },
     { label: "Qwen (qwen3.*)", key: "qwen", options: ["auto", "on", "off"] },
     { label: "Qwen Thinking Budget", key: "qwenBudget", options: ["auto", "4096", "16384", "32768", "81920"] }
   ];
@@ -2313,11 +2315,12 @@ function hasMessagePayload(message: ApiMessage): boolean {
 // Detect which Thinking family a raw model id belongs to. Used both to render
 // the per-model picker submenu (configurationSchema) and to map the user's
 // per-request selection back to the right OpenCode request field.
-type ThinkingFamily = "deepseek" | "glm" | "kimi" | "qwen" | "mimo" | null;
+type ThinkingFamily = "deepseek" | "glm" | "kimi" | "minimax" | "qwen" | "mimo" | null;
 function thinkingFamily(modelId: string): ThinkingFamily {
   if (/^deepseek-/i.test(modelId)) return "deepseek";
   if (/^glm-/i.test(modelId)) return "glm";
   if (/^kimi-/i.test(modelId)) return "kimi";
+  if (/^minimax-/i.test(modelId)) return "minimax";
   if (/^qwen3(?:\.|-)/i.test(modelId)) return "qwen";
   if (/^mimo-/i.test(modelId)) return "mimo";
   return null;
@@ -2502,6 +2505,27 @@ function buildFamilyThinkingSchema(
     };
   }
 
+  if (family === "minimax") {
+    // OpenCode transform.ts only defines none/thinking for minimax-m3, and
+    // the gateway does not expose reasoning_effort levels. On/off only.
+    return {
+      properties: {
+        reasoningEffort: {
+          type: "string",
+          title: "Thinking Effort",
+          enum: ["off", "on"],
+          enumItemLabels: ["Off", "On"],
+          enumDescriptions: [
+            "Fastest responses",
+            "Enable thinking"
+          ],
+          default: "off",
+          group: "navigation"
+        }
+      }
+    };
+  }
+
   if (family === "qwen") {
     return {
       properties: {
@@ -2598,6 +2622,11 @@ function applyRequestThinkingOverride(
       next.mimo = reasoningEffort as ThinkingSettings["mimo"];
     }
   }
+  if (family === "minimax") {
+    if (typeof reasoningEffort === "string" && ["off", "on"].includes(reasoningEffort)) {
+      next.minimax = reasoningEffort as ThinkingSettings["minimax"];
+    }
+  }
   if (family === "qwen") {
     if (typeof thinkingMode === "string" && (thinkingMode === "auto" || thinkingMode === "on" || thinkingMode === "off")) {
       next.qwen = thinkingMode;
@@ -2658,6 +2687,7 @@ function getSettings(): ApiSettings {
       deepseek: config.get<ThinkingSettings["deepseek"]>("thinking.deepseek", "off"),
       glm: config.get<ThinkingSettings["glm"]>("thinking.glm", "off"),
       kimi: config.get<ThinkingSettings["kimi"]>("thinking.kimi", "off"),
+      minimax: config.get<ThinkingSettings["minimax"]>("thinking.minimax", "off"),
       qwen: config.get<ThinkingSettings["qwen"]>("thinking.qwen", "off"),
       qwenBudget: config.get<ThinkingSettings["qwenBudget"]>("thinking.qwenBudget", "auto"),
       mimo: config.get<ThinkingSettings["mimo"]>("thinking.mimo", "off"),
@@ -2682,7 +2712,10 @@ function buildThinkingPayload(modelId: string, thinking: ThinkingSettings, hasIm
   }
 
   if (/^kimi-/i.test(modelId)) {
-    return { thinking: { type: thinking.kimi === "on" ? "enabled" : "disabled" } };
+    // MoonshotAI/Kimi API uses enable_thinking (boolean) on the OpenAI-compatible
+    // chat-completions endpoint. This is more universally supported than the
+    // Anthropic-style thinking: { type: "enabled"|"disabled" } object.
+    return { enable_thinking: thinking.kimi === "on" };
   }
 
   if (/^qwen3(?:\.|-)/i.test(modelId)) {
@@ -2713,6 +2746,19 @@ function buildThinkingPayload(modelId: string, thinking: ThinkingSettings, hasIm
       return {};
     }
     return { reasoning_effort: thinking.mimo };
+  }
+
+  if (/^minimax-/i.test(modelId)) {
+    // OpenCode transform.ts maps minimax-m3 to thinking: { type: "disabled"|"adaptive" }
+    // (Anthropic-style format, not reasoning_effort). MiniMax models routed through
+    // the messages endpoint (m2.*) use standard Anthropic enabled/disabled.
+    if (thinking.minimax === "off") {
+      return {};
+    }
+    if (/^minimax-m2\./i.test(modelId)) {
+      return { thinking: { type: "enabled" } };
+    }
+    return { thinking: { type: "adaptive" } };
   }
 
   return {};
