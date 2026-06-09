@@ -5,6 +5,22 @@ export interface BaseModelLimits {
   maxOutputTokens: number;
 }
 
+export interface ModelCostTier {
+  /** Dollars per 1M input tokens for this tier. */
+  input: number;
+  /** Dollars per 1M output tokens for this tier. */
+  output: number;
+  /** Dollars per 1M cache read tokens for this tier. */
+  cache_read?: number;
+  /** Dollars per 1M cache write tokens for this tier. */
+  cache_write?: number;
+  /** The tier specification, e.g. { type: "context", size: 256000 }. */
+  tier: {
+    type: string;
+    size: number;
+  };
+}
+
 export interface ModelCost {
   /** Dollars per 1M input tokens. */
   input: number;
@@ -14,6 +30,10 @@ export interface ModelCost {
   cache_read?: number;
   /** Dollars per 1M cache write tokens. */
   cache_write?: number;
+  /** Context-size-based pricing tiers (from models.dev). */
+  tiers?: ModelCostTier[];
+  /** Pricing for contexts exceeding 200K tokens (shorthand). */
+  context_over_200k?: Omit<ModelCost, 'tiers' | 'context_over_200k'>;
 }
 
 export interface ModelMetadataFields {
@@ -24,6 +44,8 @@ export interface ModelMetadataFields {
   supportsVideo?: boolean;
   supportsPdf?: boolean;
   reasoning?: boolean;
+  /** Raw reasoning_options from models.dev, e.g. [{ type: "toggle" }, { type: "effort", values: ["low","medium","high"] }]. */
+  reasoningOptions?: Array<{ type?: string; values?: string[] }>;
   status?: string;
   cost?: ModelCost;
 }
@@ -39,6 +61,8 @@ export interface ResolvedModelMetadata extends BaseModelLimits {
   supportsVideo: boolean;
   supportsPdf: boolean;
   reasoning: boolean;
+  /** Parsed reasoning_options from models.dev, if available. */
+  reasoningOptions?: Array<{ type?: string; values?: string[] }>;
   status?: string;
   source: "models.dev" | "live" | "fallback" | "default";
   cost?: ModelCost;
@@ -74,6 +98,7 @@ export interface ModelsDevModelRecord {
   };
   attachment?: boolean;
   reasoning?: boolean;
+  reasoning_options?: Array<{ type?: string; values?: string[] }>;
   modalities?: {
     input?: string[];
     output?: string[];
@@ -83,6 +108,19 @@ export interface ModelsDevModelRecord {
     output?: number;
     cache_read?: number;
     cache_write?: number;
+    tiers?: Array<{
+      input: number;
+      output: number;
+      cache_read?: number;
+      cache_write?: number;
+      tier: { type: string; size: number };
+    }>;
+    context_over_200k?: {
+      input?: number;
+      output?: number;
+      cache_read?: number;
+      cache_write?: number;
+    };
   };
 }
 
@@ -97,7 +135,7 @@ export interface ModelsDevResponse {
 
 export const MODELS_DEV_API_URL = "https://models.dev/api.json";
 export const MODEL_METADATA_REVISION = "session-2026-05-21-b";
-export const MODEL_METADATA_CACHE_KEY = "opencodego.modelMetadataCache.v4";
+export const MODEL_METADATA_CACHE_KEY = "opencode.modelMetadataCache.v5";
 export const MODEL_METADATA_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 const DEFAULT_MODEL_LIMITS: BaseModelLimits = {
@@ -374,6 +412,9 @@ export function resolveModelMetadata(
       liveMetadata?.cost ??
       cachedMetadata?.cost ??
       fallbackMetadata?.cost,
+    reasoningOptions:
+      liveMetadata?.reasoningOptions ??
+      cachedMetadata?.reasoningOptions,
   };
 }
 
@@ -410,6 +451,18 @@ function normalizeModelsDevProvider(
             output: rawCost.output,
             ...(typeof rawCost.cache_read === "number" ? { cache_read: rawCost.cache_read } : {}),
             ...(typeof rawCost.cache_write === "number" ? { cache_write: rawCost.cache_write } : {}),
+            ...(Array.isArray(rawCost.tiers) && rawCost.tiers.length > 0
+              ? { tiers: rawCost.tiers.map(t => ({
+                  input: t.input,
+                  output: t.output,
+                  ...(typeof t.cache_read === "number" ? { cache_read: t.cache_read } : {}),
+                  ...(typeof t.cache_write === "number" ? { cache_write: t.cache_write } : {}),
+                  tier: { type: t.tier.type, size: t.tier.size },
+                }))}
+              : {}),
+            ...(rawCost.context_over_200k
+              ? { context_over_200k: { input: rawCost.context_over_200k.input ?? 0, output: rawCost.context_over_200k.output ?? 0 } }
+              : {}),
           }
         : undefined;
 
@@ -422,6 +475,10 @@ function normalizeModelsDevProvider(
       supportsPdf: modalities.supportsPdf,
       reasoning:
         typeof model.reasoning === "boolean" ? model.reasoning : undefined,
+      reasoningOptions:
+        Array.isArray(model.reasoning_options) && model.reasoning_options.length > 0
+          ? model.reasoning_options
+          : undefined,
       status: typeof model.status === "string" ? model.status : undefined,
       cost,
     });
@@ -445,6 +502,7 @@ function normalizeModelMetadataFields(
     metadata.supportsVideo === undefined &&
     metadata.supportsPdf === undefined &&
     metadata.reasoning === undefined &&
+    metadata.reasoningOptions === undefined &&
     metadata.status === undefined &&
     metadata.cost === undefined
   ) {
@@ -494,4 +552,100 @@ function positiveNumber(value: unknown): number | undefined {
 
 function supportsReasoning(modelId: string): boolean {
   return /^(deepseek-|glm-|kimi-|qwen3(?:\.|-)|mimo-)/i.test(modelId);
+}
+
+// ---------------------------------------------------------------------------
+// Context-size pricing-tiers helpers
+// ---------------------------------------------------------------------------
+
+export interface ContextSizeOption {
+  /** Numeric context window token count for this option. */
+  value: number;
+  /** Human-readable label (e.g. "128K", "256K", "1M"). */
+  label: string;
+  /** Short description shown in the picker. */
+  description: string;
+  /** Whether this is the default option (cheapest/base tier). */
+  isDefault: boolean;
+}
+
+/**
+ * Given a model's cost metadata and its full context window, returns the
+ * available context-size options for the VS Code model picker, or `undefined`
+ * when the model has no tiered pricing.
+ *
+ * The options are derived from `cost.tiers[]` (each tier has a `tier.size`
+ * threshold) and/or `cost.context_over_200k` (pricing beyond the base tier).
+ */
+export function getContextSizeOptions(
+  cost: ModelCost | undefined,
+  fullContextWindow: number,
+): ContextSizeOption[] | undefined {
+  if (!cost) return undefined;
+
+  const tiers = cost.tiers;
+  const hasContextOver200k = cost.context_over_200k !== undefined;
+
+  // Collect all distinct context thresholds from explicit tiers
+  const thresholds = (tiers ?? [])
+    .filter(t => t.tier?.type === "context" && typeof t.tier.size === "number" && t.tier.size > 0)
+    .map(t => t.tier.size)
+    .sort((a, b) => a - b);
+
+  // If no explicit tiers but context_over_200k exists, use 200_000 as the threshold
+  if (thresholds.length === 0 && hasContextOver200k && fullContextWindow > 200_000) {
+    thresholds.push(200_000);
+  }
+
+  if (thresholds.length === 0) return undefined;
+
+  // Build options: base (up to first threshold) + each additional threshold + full context
+  const options: ContextSizeOption[] = [];
+  const baseThreshold = thresholds[0];
+
+  // Base/default tier
+  const hasBaseSurcharge = tiers?.some(t => t.tier.size === baseThreshold && (t.input > cost.input || t.output > cost.output));
+  options.push({
+    value: baseThreshold,
+    label: formatContextSize(baseThreshold),
+    description: "Default pricing",
+    isDefault: true,
+  });
+
+  // Intermediate tiers (thresholds beyond base)
+  for (const threshold of thresholds) {
+    if (threshold === baseThreshold) continue;
+    const hasSurcharge = tiers?.some(t => t.tier.size === threshold && (t.input > cost.input || t.output > cost.output)) ?? hasContextOver200k;
+    options.push({
+      value: threshold,
+      label: formatContextSize(threshold),
+      description: hasSurcharge ? "Higher pricing" : "Extended",
+      isDefault: false,
+    });
+  }
+
+  // Full context window (if larger than the largest threshold)
+  if (fullContextWindow > thresholds[thresholds.length - 1]) {
+    const hasSurcharge = hasContextOver200k || tiers?.some(t => t.input > cost.input || t.output > cost.output);
+    options.push({
+      value: fullContextWindow,
+      label: formatContextSize(fullContextWindow),
+      description: hasSurcharge ? "Higher pricing" : "Maximum",
+      isDefault: false,
+    });
+  }
+
+  return options;
+}
+
+function formatContextSize(size: number): string {
+  if (size >= 1_000_000) {
+    const m = size / 1_000_000;
+    return m === Math.floor(m) ? `${m}M` : `${m.toFixed(1)}M`;
+  }
+  if (size >= 1_000) {
+    const k = size / 1_000;
+    return k === Math.floor(k) ? `${k}K` : `${k.toFixed(1)}K`;
+  }
+  return String(size);
 }

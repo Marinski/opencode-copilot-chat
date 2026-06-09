@@ -49,14 +49,20 @@ This lets you pick and use OpenCode models directly from the Copilot Chat model 
 
 ### Thinking & Reasoning Controls
 
-- **Per-model Thinking configuration** — dedicated settings for each model family:
+- **Per-model Thinking configuration** — dedicated settings for each model family, now dynamically enhanced with per-model `reasoning_options` from `models.dev`:
   - **DeepSeek**: `off` / `low` / `medium` / `high` / `max`
   - **GLM**: `on` / `off`
   - **Kimi**: `on` / `off`
   - **Mimo (Xiaomi)**: `off` / `low` / `medium` / `high`
   - **Qwen**: `auto` / `on` / `off` + optional `thinking_budget` (`4096`–`81920`)
+  - **Dynamic from models.dev** — when `models.dev` provides explicit `reasoning_options` for a model (e.g. `[{type:"effort",values:["low","medium","high","max"]}]`), the picker renders the exact options the model supports, overriding any hardcoded defaults.
 - **Dynamic fallback** — any model with `reasoning: true` in its metadata automatically gets a generic `off`/`on` Thinking Effort control, so future reasoning-capable models work without hardcoded mappings.
 - **`opencodego.debugReasoning`** — writes provider `reasoning_content` to the **Output → OpenCode** channel for debugging thinking-mode responses.
+
+### Context Size & Tiered Pricing
+
+- **Context Size selector** — models with tiered pricing (from `models.dev` `cost.tiers[]` and `cost.context_over_200k`) expose a **Context Size** dropdown in the model picker, letting you choose between e.g. `256K` (default pricing) and `1M` (higher pricing). The selected value caps the effective context window for each request.
+- **Pricing transparency** — per-model `inputCost`, `outputCost`, `cacheCost`, and `priceCategory` from the live `models.dev` registry are exposed to the VS Code model picker, so you always see the real pricing for your selected tier.
 
 ### Usage Tracking
 
