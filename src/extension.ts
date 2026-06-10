@@ -276,6 +276,7 @@ interface ApiSettings {
   requestTimeoutMs: number;
   streamIdleTimeoutMs: number;
   thinking: ThinkingSettings;
+  stripThinkTags: "auto" | "on" | "off";
 }
 
 interface LanguageModelConfiguration {
@@ -2277,7 +2278,7 @@ function estimateDataPartTokenCount(part: vscode.LanguageModelDataPart): number 
   }
 
   if (part.mimeType.startsWith("text/") || part.mimeType === "application/json") {
-    return estimateTokenCount(Buffer.from(part.data).toString("utf8"));
+    return estimateTokenCount(new TextDecoder().decode(part.data));
   }
 
   return Math.max(1, Math.ceil(part.data.byteLength / 4));
@@ -2748,7 +2749,7 @@ function getSettings(): ApiSettings {
       qwenBudget: config.get<ThinkingSettings["qwenBudget"]>("thinking.qwenBudget", "auto"),
       mimo: config.get<ThinkingSettings["mimo"]>("thinking.mimo", "off"),
     },
-    stripThinkTags: config.get<ApiSettings["stripThinkTags"]>("stripThinkTags", "auto",
+    stripThinkTags: config.get<ApiSettings["stripThinkTags"]>("stripThinkTags", "auto"),
   };
 }
 

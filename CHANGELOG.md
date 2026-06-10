@@ -4,14 +4,31 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-06-10
+
 ### Added
 
+- **Gzip request compression.** All outgoing API requests to the OpenCode Go/Zen proxy are now automatically gzip-compressed when the JSON payload exceeds 50 KB. JSON typically compresses 5-10×, turning a 400 KB payload into ~40-80 KB — well within the proxy's HTTP body size limit. Uses `node:zlib.gzipSync` with `Content-Encoding: gzip` header. Compression is transparent; the proxy handles decompression natively. This is the primary mechanism for avoiding proxy payload limit errors; message trimming is now a fallback only.
+- **Byte-aware message trimming fallback.** New `messageTrimmer.ts` module provides `trimApiMessages()` which prunes older conversation turns when the messages array exceeds a generous byte budget (~800 KB pre-compression). Always preserves the system prompt, full conversation turns, and tool-call atomicity. Trimming only activates as a safety net when gzip alone isn't sufficient. A subtle notification is shown to the user when a significant portion (>30%) of context is trimmed.
 - **Context Size selector for tiered-pricing models.** Models with `cost.tiers[]` or `cost.context_over_200k` in their `models.dev` metadata now expose a **Context Size** dropdown in the VS Code model picker (e.g. `256K` ↔ `1M`). The selected value caps the effective `maxInputTokens` for each request, matching the pricing structure declared by the upstream provider. Supported for both OpenCode Go and OpenCode Zen models.
 - **Dynamic reasoning options from models.dev.** When a model's `models.dev` entry declares explicit `reasoning_options` (e.g. `[{type:"effort",values:["low","medium","high","max"]}]`), the model picker renders those exact effort levels, overriding the family-based hardcoded defaults. The `reasoningOptions` field is propagated through `ModelMetadataFields` → `ResolvedModelMetadata` → `modelConfigurationSchema()`.
 - **Thinking controls for Mimo and MiniMax models.** MiniMax (`minimax-m*`) models now support on/off thinking only (`thinking: { type: "disabled"|"adaptive"|"enabled" }` — the OpenCode gateway does not expose `reasoning_effort` for this family, as verified in the official `transform.ts`). Mimo (`mimo-v2.*`) models support `off`/`low`/`medium`/`high` reasoning effort levels. DeepSeek (`deepseek-v4-*`) models support `off`/`low`/`medium`/`high`/`max` — matching the upstream OpenCode reasoning effort options sourced from the official OpenCode provider `transform.ts`. The `opencodego.thinking.mimo`, `opencodego.thinking.minimax` and `opencodego.thinking.deepseek` settings have been updated with the corrected enum values.
 - **Kimi thinking format corrected.** Kimi models (`kimi-k2.5`, `kimi-k2.6`) on the OpenAI-compatible chat-completions endpoint now send `enable_thinking: true | false` (MoonshotAI-native boolean) instead of the Anthropic-style `thinking: { type: "enabled" | "disabled" }` object, which was silently ignored. The `opencodego.thinking.kimi` setting description updated accordingly.
 - **Dynamic configuration schema** — any model with `reasoning: true` in its resolved metadata (from `models.dev`, live API, or bundled fallback) automatically gets a generic `off`/`on` Thinking Effort control in the model picker, without requiring a hardcoded family mapping. Future reasoning-capable models will work out of the box.
 - New settings `opencodego.thinking.mimo` (`"off"` / `"low"` / `"medium"` / `"high"`, default `"off"`) and expanded `opencodego.thinking.deepseek` (`"off"` / `"low"` / `"medium"` / `"high"` / `"max"`, default `"off"`).
+- New setting `opencodego.stripThinkTags` (`"auto"` / `"on"` / `"off"`, default `"auto"`) — strips `<!--<think-->...<!--</think-->` tags from model output. In `"auto"` mode, stripping applies only to known models that inline reasoning in content (MiniMax M3 family). Merged from main (`v0.2.2`).
+
+### Changed
+
+- **Merged `main` into `develop`** — all features from `main` (Mimo thinking, context size selector, dynamic reasoning, strip think tags, icon refresh) are now unified with develop-only features (gzip compression, message trimming) into a single coherent branch.
+- Streaming layer refactored to separate gzip compression logic from SSE parsing, making payload handling more maintainable.
+
+### Fixed
+
+- Fixed merge conflict in `modelLimits()` signature — `contextSizeOverride` parameter from main is now correctly combined with develop's message trimming logic.
+- Fixed missing `stripThinkTags` property on `ApiSettings` interface after merge.
+- Fixed missing closing parenthesis on `stripThinkTags` config getter that caused TypeScript parse error.
+- Fixed `Buffer` not found TypeScript error by replacing `Buffer.from(part.data).toString("utf8")` with `new TextDecoder().decode(part.data)` in `estimateDataPartTokenCount`.
 
 ## [0.2.3] — 2026-06-09
 
