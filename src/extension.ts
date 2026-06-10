@@ -2740,14 +2740,17 @@ function buildThinkingPayload(modelId: string, thinking: ThinkingSettings, hasIm
   }
 
   if (/^glm-/i.test(modelId)) {
+    // GLM (ZhipuAI) uses thinking: { type: "enabled" | "disabled" } format.
+    // The gateway's transform.ts variants() returns {} for GLM — no variants
+    // are exposed, meaning the gateway doesn't validate or transform GLM
+    // thinking parameters. We send through as-is to the upstream API.
     return { thinking: { type: thinking.glm === "on" ? "enabled" : "disabled" } };
   }
 
   if (/^kimi-/i.test(modelId)) {
-    // MoonshotAI/Kimi API uses enable_thinking (boolean) on the OpenAI-compatible
-    // chat-completions endpoint. This is more universally supported than the
-    // Anthropic-style thinking: { type: "enabled"|"disabled" } object.
-    return { enable_thinking: thinking.kimi === "on" };
+    // Testes confirmam que o gateway aceita thinking: { type } para Kimi
+    // (HTTP 200). enable_thinking causa 400 ("Extra inputs not permitted").
+    return { thinking: { type: thinking.kimi === "on" ? "enabled" : "disabled" } };
   }
 
   if (/^qwen3(?:\.|-)/i.test(modelId)) {

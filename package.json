@@ -139,7 +139,7 @@
           "type": "string",
           "enum": ["on", "off"],
           "default": "off",
-          "markdownDescription": "Thinking mode for Kimi models (`kimi-k2.5`, `kimi-k2.6`). Maps to `enable_thinking: true | false` (MoonshotAI-native boolean on the OpenAI-compatible endpoint)."
+          "markdownDescription": "Thinking mode for Kimi models (`kimi-k2.5`, `kimi-k2.6`). Maps to `thinking: { type: 'enabled' | 'disabled' }`."
         },
         "opencodego.thinking.minimax": {
           "type": "string",
