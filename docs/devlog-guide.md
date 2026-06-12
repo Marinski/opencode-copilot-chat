@@ -18,12 +18,12 @@ No confirmation needed before providing a response.
 
 ## Step 1 — Read & Parse Session Handoff
 
-Read the `⚡ Session Handoff` section of `docs/DEVLOG.md`. Parse each field:
+Read the `⚡ Session Handoff` section of `docs/devlog.md`. Parse each field:
 
 | Field | If Filled | If Empty |
 |-------|-----------|----------|
 | Last Session | Use as time context | Write: `[No previous session data]` |
-| Worked On | Use as work context | Infer from Active Tasks P0 with most recent `Last touched` |
+| Worked On | Use as Devlog | Infer from Active Tasks P0 with most recent `Last touched` |
 | Stopped At | Use as resume point | Infer from `Last touched` + `Next Action` of P0 task |
 | Next Action | Execute this directly | Infer from Active Tasks: pick P0 that isn't blocked, write suggestion |
 | Open Issues | Note as constraint | Write: `[No open issues recorded]` |
@@ -32,7 +32,7 @@ Read the `⚡ Session Handoff` section of `docs/DEVLOG.md`. Parse each field:
 
 ## Step 2 — Automatic Task Status Inference
 
-Read `🔥 ACTIVE TASKS` from the devlog from `docs/DEVLOG.md`. For each task, determine actual status based on:
+Read `🔥 ACTIVE TASKS` from the devlog from `docs/devlog.md`. For each task, determine actual status based on:
 
 ### Task is ready to work on if:
 - Status = 🟡 AND Blocked by = `-` AND Next Action is filled
@@ -219,9 +219,9 @@ Before coding, AI automatically:
 | `feat` | `docs/features/` — feature specs |
 | `fix` | `docs/issues/` — bug reports and fixes |
 | `models` | `docs/references/` — model registry docs |
-| `streaming` | `docs/features/streaming/` — streaming docs |
-| `routing` | `docs/features/routing/` — routing docs |
-| `security` | `docs/issues/security/` — security advisories |
+| `streaming` | `docs/features/` — streaming-related feature docs |
+| `routing` | `docs/features/` — routing-related feature docs |
+| `security` | `docs/issues/` — security-related issue docs |
 
 ---
 
@@ -289,4 +289,4 @@ without being asked, for all status changes:
 ---
 
 _Rules v3.0 | Updated: 2026-06-12_
-_Paired with: `docs/DEVLOG.md`_
+_Paired with: `docs/devlog.md`_

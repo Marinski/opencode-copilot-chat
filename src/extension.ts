@@ -56,6 +56,7 @@ let usageStatusBarItem: vscode.StatusBarItem | undefined;
 let goUsageStatusBarItem: vscode.StatusBarItem | undefined;
 
 let goUsageTracker: GoUsageTracker | undefined;
+let usageWebviewPanel: vscode.WebviewPanel | undefined;
 
 interface ProviderDefinition {
   vendor: typeof GO_VENDOR | typeof ZEN_VENDOR;
@@ -86,7 +87,7 @@ const KNOWN_UNAVAILABLE_MODEL_IDS = new Set([
 const DEFAULT_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 const OPEN_CODE_CLIENT = "vscode-copilot-chat";
-const OPEN_CODE_USER_AGENT = "opencode-copilot-chat/0.1.7 VSCode";
+const OPEN_CODE_USER_AGENT = "opencode-copilot-chat/0.2.7 VSCode";
 
 const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
   [GO_VENDOR]: {
@@ -428,7 +429,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("opencodego.setApiKey", () => goProvider.setApiKey()),
     vscode.commands.registerCommand("opencodezen.diagnostics", () => zenProvider.showDiagnostics()),
     vscode.commands.registerCommand("opencodego.modelPickerDiagnostics", () => showModelPickerDiagnostics()),
-    vscode.commands.registerCommand("opencodego.setThinkingEffort", () => showThinkingEffortPicker())
+    vscode.commands.registerCommand("opencodego.setThinkingEffort", () => showThinkingEffortPicker()),
+    vscode.commands.registerCommand("opencodego.showUsageDetails", () => showUsageWebview(context))
   );
 
   context.subscriptions.push(
@@ -587,6 +589,7 @@ function ensureGoUsageStatusBar(context: vscode.ExtensionContext): void {
     vscode.StatusBarAlignment.Right,
     94,
   );
+  goUsageStatusBarItem.command = "opencodego.showUsageDetails";
   context.subscriptions.push(goUsageStatusBarItem);
   refreshGoUsageStatusBar();
 }
@@ -599,6 +602,81 @@ function refreshGoUsageStatusBar(): void {
   goUsageStatusBarItem.text    = formatGoUsageStatusBarText(s);
   goUsageStatusBarItem.tooltip = buildUsageTooltip(s);
   goUsageStatusBarItem.show();
+  updateWebviewContent();
+}
+
+function showUsageWebview(context: vscode.ExtensionContext): void {
+  if (usageWebviewPanel) {
+    usageWebviewPanel.reveal(vscode.ViewColumn.Beside);
+    return;
+  }
+
+  usageWebviewPanel = vscode.window.createWebviewPanel(
+    "opencodego.usageWebview",
+    "OpenCode Usage Summary",
+    vscode.ViewColumn.Beside,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true
+    }
+  );
+
+  usageWebviewPanel.onDidDispose(() => {
+    usageWebviewPanel = undefined;
+  }, null, context.subscriptions);
+
+  updateWebviewContent();
+}
+
+function updateWebviewContent(): void {
+  if (!usageWebviewPanel || !goUsageTracker) return;
+  const s = goUsageTracker.getSummary();
+  const svg = buildUsageTooltipSvg(s);
+
+  usageWebviewPanel.webview.html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>OpenCode Usage Summary</title>
+      <style>
+        body {
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          height: 100vh;
+          background-color: var(--vscode-editor-background);
+          color: var(--vscode-editor-foreground);
+          margin: 0;
+          padding: 20px;
+          box-sizing: border-box;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        .container {
+          width: 100%;
+          max-width: 480px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 15px;
+        }
+        svg {
+          width: 100%;
+          height: auto;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+          background-color: #1e1e1e;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        ${svg}
+      </div>
+    </body>
+    </html>
+  `;
 }
 
 function buildUsageTooltip(s: ReturnType<GoUsageTracker["getSummary"]>): vscode.MarkdownString {

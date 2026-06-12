@@ -66,6 +66,10 @@
       {
         "command": "opencodego.setThinkingEffort",
         "title": "OpenCode: Set Thinking Effort..."
+      },
+      {
+        "command": "opencodego.showUsageDetails",
+        "title": "OpenCode Go: Show Usage Details"
       }
     ],
     "configuration": {

@@ -107,20 +107,13 @@ Configure via VS Code Settings > Extensions > OpenCode Copilot Chat
 
 ```
 /docs/
-├── DOCUMENTATION-STANDARDS.md    ← Master reference (this file)
+├── documentation-standards.md    ← Master reference (this file)
 ├── changelog-guide.md            ← Changelog writing guide
 ├── devlog.md                     ← Development activity log & session state
 ├── devlog-guide.md               ← How to read/update the devlog
 ├── architecture/                 # System design & decisions
-├── features/                     # Per-feature documentation
-│   ├── routing/
-│   ├── streaming/
-│   └── [feature]/
-├── issues/                       # Bugs & fixes (by topic)
-│   ├── models/
-│   ├── streaming/
-│   └── [topic]/
-├── guides/                       # How-to guides
+├── features/                     # Per-feature documentation (flat files)
+├── issues/                       # Bugs & fixes (flat files)
 └── references/                   # API docs, configs, provider specs
 ```
 
