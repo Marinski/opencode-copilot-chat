@@ -46,7 +46,7 @@
   },
   "homepage": "https://github.com/ltmoerdani/opencode-copilot-chat#readme",
   "engines": {
-    "vscode": "^1.118.0"
+    "vscode": "^1.120.0"
   },
   "categories": [
     "AI",
@@ -237,9 +237,9 @@
     "vscode:prepublish": "npm run compile"
   },
   "devDependencies": {
-    "@types/node": "^20.19.0",
-    "@types/vscode": "^1.118.0",
+    "@types/node": "^25.9.3",
+    "@types/vscode": "^1.120.0",
     "@vscode/vsce": "^3.6.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }
