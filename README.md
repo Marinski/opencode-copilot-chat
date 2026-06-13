@@ -96,22 +96,32 @@ The extension fetches **live model lists** on every startup from:
 | `mimo-v2.5-pro` / `mimo-v2-pro` | **1,048,576** | 128,000 | 🧠 Effort `low`→`high` |
 | `mimo-v2.5` | **1,000,000** | 128,000 | Fast & cheap |
 | `kimi-k2.6` / `kimi-k2.5` | 262,144 | 65,536 | 🧠 `on`/`off` |
+| `minimax-m3` | 512,000 | 131,072 | 🧠 `on`/`off` |
 | `minimax-m2.7` / `minimax-m2.5` | 204,800 | 131,072 | 🧠 `on`/`off` |
+| `minimax-m2.1` / `minimax-m2` | 204,800 | 131,072 | 🧠 `on`/`off` |
 | `glm-5.1` / `glm-5` | 202,752 | 32,768 | 🧠 `on`/`off` |
+| `hy3-preview` | 256,000 | 64,000 | Preview |
+| `ring-2.6-1t` | 262,000 | 66,000 | Large context |
 
 ### 🆓 OpenCode Zen (free models — no payment needed)
 
 | Model | Context | Max Output | Vendor |
 |---|---:|---:|---|
 | `claude-opus-4-7` / `claude-opus-4-6` | **1,000,000** | 128,000 | Anthropic |
-| `claude-sonnet-4-6` / `claude-sonnet-4-5` | **1,000,000** | 64,000 | Anthropic |
+| `claude-opus-4-5` / `claude-opus-4-1` | 200,000 | 32,000-64,000 | Anthropic |
+| `claude-sonnet-4-6` / `claude-sonnet-4-5` / `claude-sonnet-4` | **1,000,000** | 64,000 | Anthropic |
+| `claude-haiku-4-5` | 200,000 | 64,000 | Anthropic |
 | `gpt-5.5` / `gpt-5.5-pro` | **1,050,000** | 128,000 | OpenAI |
 | `gpt-5.4` / `gpt-5.4-pro` / `gpt-5.4-mini` | 400,000–1,050,000 | 128,000 | OpenAI |
-| `gemini-3.5-flash` / `gemini-3.1-pro` | **1,048,576** | 65,536 | Google |
+| `gpt-5.3-codex` / `gpt-5.2` / `gpt-5.2-codex` | 400,000 | 128,000 | OpenAI |
+| `gpt-5.1` / `gpt-5.1-codex` / `gpt-5.1-codex-max` / `gpt-5.1-codex-mini` | 400,000 | 128,000 | OpenAI |
+| `gpt-5` / `gpt-5-codex` / `gpt-5-nano` | 400,000 | 128,000 | OpenAI |
+| `gemini-3.5-flash` / `gemini-3.1-pro` / `gemini-3-flash` | **1,048,576** | 65,536 | Google |
 | `grok-build-0.1` | 256,000 | 256,000 | xAI |
 | `deepseek-v4-flash-free` | 200,000 | 128,000 | DeepSeek |
 | `qwen3.6-plus-free` | 262,144 | 65,536 | Alibaba |
 | `minimax-m2.5-free` | 204,800 | 131,072 | MiniMax |
+| `trinity-large-preview-free` | 131,072 | 131,072 | Trinity |
 | `nemotron-3-super-free` | 204,800 | 128,000 | NVIDIA |
 | `big-pickle` | 200,000 | 128,000 | 🥒 Mystery box |
 
