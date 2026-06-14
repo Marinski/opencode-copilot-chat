@@ -1,5 +1,5 @@
 # 🧠 OPENCODE COPILOT CHAT DEVLOG
-**Branch:** `main` | **Updated:** 2026-06-13 Asia/Jakarta | **Current Phase:** v0.2.8 — MiniMax M3 Think-Tag Leak Reimplementation ✅
+**Branch:** `main` | **Updated:** 2026-06-14 Asia/Jakarta | **Current Phase:** v0.2.9 — Community PRs & Repo Discoverability ✅
 
 ---
 
@@ -7,11 +7,51 @@
 
 | Field | Value |
 |-------|-------|
-| **Last Session** | 2026-06-13 |
-| **Worked On** | MiniMax M3 `<think>` tag leak reimplementation. The `opencodego.stripThinkTags` setting existed since v0.2.2 (PR #13) but the runtime stripping logic was lost during later merge cycles. New `ThinkTagFilter` class implemented from scratch with streaming-safe state machine, wired into both extractors + all 4 stream entry points. `ApiSettings.stripThinkTags` type fixed to match `package.json` enum. Version bumped to 0.2.8. |
-| **Stopped At** | `main` at `0.2.8`; compile clean (0 errors); docs written (issue #22, CHANGELOG, devlog). |
-| **Next Action** | → Build VSIX and install locally for v0.2.8 testing, or implement IMPL-01 (agents window model visibility — Option A duplicate model registration). |
-| **Open Issues** | (1) Go Usage status bar requires non-depleted subscription to verify token recording. (2) Qwen image requests can still hit provider-side Alibaba quota depending on account/model capacity. (3) `qwen3.6-plus-free` can continue workspace tool calls instead of synthesizing final text during broad agent tasks. |
+| **Last Session** | 2026-06-14 |
+| **Worked On** | Community growth session: merged 3 community PRs (#34 docs, #37 GIF, #38 bug fix), rewrote README for virality, optimized GitHub topics (20), enabled Discussions, created `good first issue` labels + 3 issues, added `.github/` community files (CONTRIBUTING, templates, CI, dependabot, funding), responded to community issues (#11, #23, #35). Version bumped to 0.2.9. |
+| **Stopped At** | `main` at `0.2.9`; compile clean (0 errors); docs written (issue #23, CHANGELOG, devlog). |
+| **Next Action** | → Build VSIX and publish to VS Code Marketplace, or implement IMPL-01 (agents window model visibility — Option A duplicate model registration, pending community consensus on issue #11). |
+| **Open Issues** | (1) Issue #11 — Agents window model visibility: awaiting community input on Option A (duplicate models) config + ID strategy. (2) Issue #23 — Go Usage tracker out of sync: awaiting user feedback on Options B+C (device-only label + configurable subscription start date). (3) Qwen image requests can still hit provider-side Alibaba quota. (4) `qwen3.6-plus-free` can loop tool calls instead of synthesizing final text during broad agent tasks. |
+
+---
+
+## ✅ Community Growth & PR Merges — Session 2026-06-14 🟢 DONE
+
+**Action:** Full community growth session — merged 3 community PRs, rewrote README, optimized repo discoverability, and engaged with community issues.
+
+**Changes:**
+
+| # | Change | Files | Impact |
+|---|--------|-------|--------|
+| P0 | Merged PR #34 — README model tables sync | `README.md` | 15 missing models added (Go: minimax-m3/m2.1/m2, hy3-preview, ring-2.6-1t; Zen: claude variants, gemini-3-flash, gpt-5.x variants, trinity-large-preview-free) |
+| P0 | Merged PR #37 — Model picker demo GIF | `docs/screenshots/model-picker.gif`, `README.md` | First demo visual — GIF wired into README `## 🎬 Demo` section at width=480 |
+| P0 | Merged PR #38 — Fix "Off" missing in Thinking picker | `src/extension.ts` | `buildFamilyThinkingSchema()`: moved "off" outside `hasToggle` guard; added "on" for toggle-only models. Fixes #35 |
+| P1 | README full rewrite for virality | `README.md` | Hero badges, comparison table (Copilot Free/Pro/Pro+ vs OpenCode), model showcase, FAQ, Star History, social share |
+| P1 | package.json marketplace SEO | `package.json` | displayName keyword-rich, keywords 9→25, categories `[AI]`→`[AI, ML, Education, Other]` |
+| P1 | GitHub repo settings | (GitHub API) | Topics 6→20, description updated, Discussions enabled |
+| P1 | `.github/` community files | `.github/*`, `CONTRIBUTING.md` | Issue templates, PR template, FUNDING, dependabot (monthly), CI workflow, simplified for beginners |
+| P1 | Labels for contributors | (GitHub API) | `good first issue`, `help wanted`, `documentation`, `models`, `hacktoberfest` |
+| D1 | Issue doc for PR #38 | `docs/issues/23-...` | Full root cause + scenario matrix |
+| D2 | CHANGELOG entry | `CHANGELOG.md` | `[0.2.9] — 2026-06-14` |
+| D3 | Version bump | `package.json` | `0.2.8` → `0.2.9` |
+
+**Community engagement:**
+
+| Issue | Action |
+|-------|--------|
+| [#11](https://github.com/ltmoerdani/opencode-copilot-chat/issues/11) (Agents window visibility) | Posted detailed options analysis (Option A marketplace-safe, B/C rejected), asked community for config + ID strategy input |
+| [#23](https://github.com/ltmoerdani/opencode-copilot-chat/issues/23) (Go Usage not updating) | Explained client-side limitation, identified monthly anchor bug, proposed Options A-D, leaning B+C |
+| [#35](https://github.com/ltmoerdani/opencode-copilot-chat/issues/35) (Can't turn off reasoning) | Fixed by PR #38, closed |
+
+**Contributors:** [@rupayon123](https://github.com/rupayon123) (#34), [@sublimode](https://github.com/sublimode) (#35 report, #37, #38)
+
+**Verification:**
+
+```bash
+npm run compile    # 0 errors
+```
+
+**Result:** ✅ 3 community PRs merged, README transformed, repo discoverability optimized, 2 community issues engaged.
 
 ---
 

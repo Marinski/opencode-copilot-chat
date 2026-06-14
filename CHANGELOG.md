@@ -2,6 +2,27 @@
 
 All notable changes to the **OpenCode Go BYOK Provider** extension are documented here.
 
+## [0.2.9] — 2026-06-14
+
+### Fixed
+
+- **`[Thinking]` "Off" option missing for models.dev effort-only schemas.** Models whose `models.dev` `reasoning_options` contained only `{ type: "effort" }` without `{ type: "toggle" }` (e.g. DeepSeek V4 Flash with `high`, `max`) showed no "Off" option in the Thinking Effort picker — users could not disable reasoning. Fix moves the "off" enum entry outside the `hasToggle` guard so it is always available. Also adds an "on" option for toggle-only models (toggle but no effort values) so they get a proper off/on choice. Fixes [#35](https://github.com/ltmoerdani/opencode-copilot-chat/issues/35). PR [#38](https://github.com/ltmoerdani/opencode-copilot-chat/pull/38) by [@sublimode](https://github.com/sublimode).
+
+### Added
+
+- **Model picker demo GIF.** Added `docs/screenshots/model-picker.gif` showing the Copilot Chat model picker flow with OpenCode models, wired into the README demo section. PR [#37](https://github.com/ltmoerdani/opencode-copilot-chat/pull/37) by [@sublimode](https://github.com/sublimode).
+
+### Changed
+
+- **README model tables synced with fallback catalog.** Added 15 missing models across the Go and Zen tables to match the bundled `MODEL_LIMITS_BY_PROVIDER` in `src/metadata.ts`. Includes `minimax-m3`, `minimax-m2.1`, `minimax-m2`, `hy3-preview`, `ring-2.6-1t` (Go) and `claude-opus-4-5`, `claude-opus-4-1`, `claude-sonnet-4`, `claude-haiku-4-5`, `gemini-3-flash`, `gpt-5.3-codex`, `gpt-5.2` variants, `gpt-5.1` variants, `gpt-5` variants, `trinity-large-preview-free` (Zen). PR [#34](https://github.com/ltmoerdani/opencode-copilot-chat/pull/34) by [@rupayon123](https://github.com/rupayon123).
+- **Community health files.** Added `CONTRIBUTING.md`, GitHub Issue templates (bug report, feature request), PR template, `FUNDING.yml`, `dependabot.yml`, and CI workflow (`ci.yml`). Simplified to be beginner-friendly.
+
+### Documentation
+
+- New issue doc: `docs/issues/23-20260614-thinking-off-missing-for-effort-only-schemas.md`
+
+---
+
 ## [0.2.8] — 2026-06-13
 
 ### Fixed
