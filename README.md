@@ -78,6 +78,16 @@
 
 ---
 
+## 🎬 Demo
+
+<p align="center">
+  <img src="docs/screenshots/model-picker.gif" alt="Copilot Chat model picker showing OpenCode models" width="480" />
+</p>
+
+*Selecting an OpenCode model from the Copilot Chat model picker.*
+
+---
+
 ## 🧠 Models
 
 The extension fetches **live model lists** on every startup from:
