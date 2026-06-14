@@ -2521,10 +2521,15 @@ function buildFamilyThinkingSchema(
       const enumDescriptions: string[] = [];
 
       // "off" is always the first option when toggle is present
-      if (hasToggle) {
-        enumOptions.push("off");
-        enumLabels.push("Off");
-        enumDescriptions.push("Fastest responses");
+      enumOptions.push("off");
+      enumLabels.push("Off");
+      enumDescriptions.push("Fastest responses");
+
+      // Toggle-only (no effort values): add "on" for a simple off/on choice
+      if (hasToggle && effortValues.length === 0) {
+        enumOptions.push("on");
+        enumLabels.push("On");
+        enumDescriptions.push("Enable reasoning");
       }
 
       // Add effort levels
