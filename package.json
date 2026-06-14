@@ -48,6 +48,10 @@
   "engines": {
     "vscode": "^1.120.0"
   },
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
   "categories": [
     "AI",
     "Machine Learning",
