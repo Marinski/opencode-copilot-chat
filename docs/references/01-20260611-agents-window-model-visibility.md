@@ -3,9 +3,10 @@
 # Agents Window Model Visibility — OpenCode Models in VS Code Agents Tab
 
 **Topic:** models / vscode / architecture
-**Updated:** 2026-06-13
+**Updated:** 2026-06-14
 **Tags:** #models #vscode #agents-window #targetChatSessionType #marketplace #chatSessions
 **GitHub Issue:** [ltmoerdani/opencode-copilot-chat#11](https://github.com/ltmoerdani/opencode-copilot-chat/issues/11)
+**Implementation:** [Feature doc 06-20260614](../features/06-20260614-agents-window-model-visibility.md) — shipped in PR [#39](https://github.com/ltmoerdani/opencode-copilot-chat/pull/39) by @Marinski
 
 ---
 
@@ -274,10 +275,10 @@ provideLanguageModelChatInformation()
 
 - ✅ Research complete — all options evaluated with source code evidence
 - ✅ Marketplace compatibility confirmed for Option A
-- ✅ Document complete — implementation tracked separately as GitHub Issue #11
+- ✅ **Implemented in PR [#39](https://github.com/ltmoerdani/opencode-copilot-chat/pull/39)** (2026-06-14) by @Marinski — see [feature doc 06-20260614](../features/06-20260614-agents-window-model-visibility.md)
 - ❌ Custom session type "opencode-copilot" NOT possible without proposed API
 
-> **Note (2026-06-13):** This reference document is complete. The recommended Option A (duplicate models with `targetChatSessionType: 'copilotcli'`) is documented for future implementation. Codebase verification confirms `targetChatSessionType` is NOT yet set in model registration (`src/extension.ts`) — implementation is a separate feature task, not a documentation gap.
+> **Note (2026-06-14, post-implementation):** Option A shipped successfully. Confirmed that the bare value `"copilotcli"` (from `SessionType.CopilotCLI`) is the correct `targetChatSessionType`, NOT `"agent-host-copilotcli"` (the resource URI scheme). The research below initially pointed to `"agent-host-copilotcli"` as the working value — that was incorrect; PR #39 verified `"copilotcli"` is what actually works. An additional prerequisite not covered in the original research: users must set `"extensions.supportAgentsWindow": { "ltmoerdani.opencode-copilot-chat": true }` for the extension to load in the Agents window process.
 
 ---
 

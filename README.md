@@ -33,7 +33,7 @@
 |---|---|
 | 💸 **Cheaper than Copilot Pro+** | Copilot Free + OpenCode **Zen free** models = **$0** for Claude Opus, GPT-5.5, Gemini 3.5, Grok, DeepSeek. Need premium? OpenCode **Go** is pay-per-use (top-up), no $39/mo subscription |
 | 🌍 **30+ frontier models** | DeepSeek V4, Kimi K2.6, GLM-5.1, Qwen3.7 Max, MiMo V2.5, MiniMax M2.7, Big Pickle, Nemotron — **all in one picker** |
-| 🤖 **Full Agent Mode** | Tool-calling (read files, edit, run terminal) works natively — not just chat |
+| 🤖 **Full Agent Mode** | Tool-calling (read files, edit, run terminal) works natively — not just chat. Models also appear in the **Agents window** (Copilot CLI session) |
 | 🧠 **Thinking controls** | Per-model reasoning effort (DeepSeek `max`, Qwen `thinking_budget`, MiniMax `on/off`, Mimo `low/med/high`) |
 | 📊 **Live usage tracking** | Status bar shows Go subscription burn-rate across 5h / weekly / monthly tiers |
 | 🔌 **Dual providers** | OpenCode **Go** (paid, pay-per-use) + OpenCode **Zen** (free) — run both at once, switch instantly |
@@ -220,6 +220,24 @@ Per-model reasoning configuration, dynamically enhanced with `reasoning_options`
 - **Response usage bar** — latest prompt/output/total/cache summary after each response.
 - **Normalized usage DataPart** — emits `usage` MIME so Copilot Chat's context widget shows accurate token counts.
 
+### 🪟 Agents Window (Copilot CLI) Support
+
+OpenCode models appear in the VS Code **Agents window** model picker when starting a Copilot CLI / Background agent session — not just the regular Chat view. Each model is registered with a `targetChatSessionType` so VS Code's picker filter surfaces them alongside Claude and GPT models when selecting a Copilot CLI agent.
+
+**Setup:**
+
+1. Add this to your VS Code `settings.json` to enable the extension in the Agents window process:
+   ```json
+   "extensions.supportAgentsWindow": {
+     "ltmoerdani.opencode-copilot-chat": true
+   }
+   ```
+2. Reload the window (`Developer: Reload Window`).
+3. Open the **Agents window** → start a new session → select **Copilot CLI** as the agent type.
+4. Open the model picker — OpenCode Go and Zen models appear.
+
+No picker duplication: the Chat view shows the general variant, the Agents window shows the agents-window variant. Routing, API key, and metadata resolution are unchanged.
+
 ### 🛠️ Smart Routing & Reliability
 
 - **Native endpoint routing** per family (see [Models](#-models) table)
@@ -338,6 +356,21 @@ Hover its row in the **Language Models** view and click the **eye icon (👁)** 
 <summary><b>Tool calls loop forever on Qwen — help?</b></summary>
 
 Known issue with `qwen3.6-plus-free` on broad agent tasks (see [issue #1](./docs/issues/01-20260515-qwen36-tool-call-loop.md)). Workaround: set `opencodego.thinking.qwen: "off"` and use a narrower task scope, or switch to a paid Qwen model.
+
+</details>
+
+<details>
+<summary><b>How do I use OpenCode models in the Agents window (Copilot CLI)?</b></summary>
+
+Add this to your VS Code `settings.json`:
+
+```json
+"extensions.supportAgentsWindow": {
+  "ltmoerdani.opencode-copilot-chat": true
+}
+```
+
+Then reload the window, open the **Agents window**, start a Copilot CLI session, and pick any OpenCode model from the picker. See the [Agents Window section](#-agents-window-copilot-cli-support) above for details.
 
 </details>
 

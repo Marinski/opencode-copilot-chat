@@ -2,6 +2,17 @@
 
 All notable changes to the **OpenCode Go BYOK Provider** extension are documented here.
 
+## [0.3.0] — 2026-06-14
+
+### Added
+
+- **`[Model Picker]` OpenCode models in the Agents window.** OpenCode Go and Zen models now appear in the VS Code Agents window model picker when starting a Copilot CLI session, alongside Claude and GPT models. Previously they were only visible in the Chat view.
+- **Action Required.** Add `"extensions.supportAgentsWindow": { "ltmoerdani.opencode-copilot-chat": true }` to VS Code settings to enable the extension in the Agents window, then reload.
+
+Fixes [#11](https://github.com/ltmoerdani/opencode-copilot-chat/issues/11). PR [#39](https://github.com/ltmoerdani/opencode-copilot-chat/pull/39) by [@Marinski](https://github.com/Marinski).
+
+---
+
 ## [0.2.9] — 2026-06-14
 
 ### Fixed
@@ -38,6 +49,8 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - **Kimi thinking format correction.** The `[0.2.4]` changelog entry incorrectly stated that Kimi models use `enable_thinking: true | false`. Tests confirm the OpenCode Go gateway **rejects** `enable_thinking` (HTTP 400: "Extra inputs are not permitted"). The correct format is `thinking: { type: "enabled" | "disabled" }` — matching GLM's format and what the gateway expects for MoonshotAI models on the OpenAI-compatible endpoint. The extension code has been using `thinking: { type }` all along; this entry corrects the record.
 - **Respect model `temperature` support from models.dev.** The extension now reads the `temperature: boolean` field from `models.dev` metadata and omits the `temperature` parameter from request payloads when the model declares it unsupported (`temperature: false`). This fixes HTTP 400 errors ("temperature is deprecated for this model.") on models like `claude-opus-4-8` and the GPT-5 family, which have deprecated the temperature parameter.
 
+---
+
 ## [0.2.6] — 2026-06-10
 
 ### Removed
@@ -45,11 +58,15 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - **Removed message trimming feature entirely** (`messageTrimmer.ts`). The byte-aware trimming that pruned older conversation turns was too aggressive and disruptive — users reported losing significant context with notifications appearing on every long conversation. Removed all related code: `messageTrimmer.ts` module, trimming logic in `extension.ts`, and payload size safety net in `streaming.ts`.
 - **Removed gzip compression** (`node:zlib`). The OpenCode Go/Zen proxy does not support `Content-Encoding: gzip` and returns HTTP 500 Internal Server Error when receiving compressed request bodies. All outgoing requests now send raw JSON payloads.
 
+---
+
 ## [0.2.5] — 2026-06-10
 
 ### Fixed
 
 - **Removed gzip compression** — the OpenCode Go/Zen proxy does **not** support `Content-Encoding: gzip` and returns HTTP 500 Internal Server Error when receiving compressed request bodies. All outgoing requests now send raw JSON payloads. Message trimming (`messageTrimmer.ts`) remains the primary mechanism for keeping payloads under the proxy's ~400 KB body limit.
+
+---
 
 ## [0.2.4] — 2026-06-10
 
@@ -76,6 +93,8 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - Fixed missing closing parenthesis on `stripThinkTags` config getter that caused TypeScript parse error.
 - Fixed `Buffer` not found TypeScript error by replacing `Buffer.from(part.data).toString("utf8")` with `new TextDecoder().decode(part.data)` in `estimateDataPartTokenCount`.
 
+---
+
 ## [0.2.3] — 2026-06-09
 
 ### Added
@@ -90,16 +109,23 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 - Fixed `Buffer` not found TypeScript error by replacing `Buffer.from(part.data).toString("utf8")` with `new TextDecoder().decode(part.data)` in `estimateDataPartTokenCount`. `TextDecoder` is a Web API available in all JS environments without requiring `@types/node`.
 
+---
+
 ## [0.2.2] — 2026-06-08
 
 ### Fixed
+
 - Strip `<think>...</think>` tags from model output when enabled. For streaming responses, the inner thinking content is accumulated into the reasoning pipeline and displayed via the existing reasoning fallback. For non-streaming fallback, the tags are removed and only the surrounding text is kept. Gated by the new `opencodego.stripThinkTags` setting (`"auto"` / `"always"` / `"never"`). In `"auto"` mode (default), stripping applies only to known models that inline reasoning in `<think>` tags within the content field (MiniMax M3 family).
+
+---
 
 ## [0.2.1] — 2026-06-06
 
 ### Removed
 
 - Removed the unused `opencodego.showUsage` command, `showGoUsagePanel` WebView panel, and related activation event. The Go Usage Tracker details are still accessible via the status bar indicator (`Go: XX%·XX%·XX%`). The separate Quick Pick panel was removed because the status bar already provides glanceable usage data and the dedicated panel added unnecessary code complexity without proportional user benefit.
+
+---
 
 ## [0.2.0] — 2026-06-05
 
@@ -113,6 +139,8 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
   - Usage log persisted in VS Code `globalState` so data survives editor restarts.
   - New command: `OpenCode Go: Show Usage` (`opencodego.showUsage`).
 
+---
+
 ## [0.1.10] — 2026-06-05
 
 ### Fixed
@@ -122,12 +150,16 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - Fixed Anthropic usage metadata parsing. Added support for Anthropic-native fields (`input_tokens`, `output_tokens`, `cache_read_input_tokens`) in addition to OpenAI fields, so the context window indicator updates correctly for Qwen models routed through the messages endpoint.
 - Fixed Qwen thinking payload format when routed through the Anthropic messages endpoint. Qwen thinking settings are now translated to Anthropic-native format (`{ type: "enabled"|"disabled" }`) instead of Qwen-native `enable_thinking` boolean, matching what the OpenCode gateway expects.
 
+---
+
 ## [0.1.9] — 2026-06-04
 
 ### Fixed
 
 - Fixed Qwen models (`qwen3.5-plus`, `qwen3.6-plus`, `qwen3.6-plus-free`, `qwen3.7-max`) not being able to call VS Code tools (file reading, terminal, etc.) and responding with short answers without follow-through. The root cause was Qwen being incorrectly routed to the Anthropic Messages API (`/messages`) which uses a different tool calling format (`tool_use` content blocks) than Qwen's native OpenAI-compatible format (`choices[].delta.tool_calls`). All Qwen models now correctly route to the chat-completions endpoint (`/chat/completions`) where tool calls are properly parsed and surfaced to Copilot Chat.
 - Fixed context window indicator not updating for Qwen models by ensuring the response streaming path correctly reports usage metadata back to VS Code.
+
+---
 
 ## [0.1.8] — 2026-06-04
 
@@ -147,6 +179,8 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 ### Fixed
 
 - Corrected the `modelCapabilities` return type to use the official `vscode.LanguageModelChatCapabilities` shape (`imageInput`, `toolCalling`, `supportsImageToText`, `supportsToolCalling`) instead of ad-hoc fields, aligning with how VS Code internally maps provider capabilities to `vision` / `toolCalling` / `agentMode`.
+
+---
 
 ## [0.1.7] — 2026-05-27
 
@@ -196,6 +230,8 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - Updated bundled fallback limits and capability hints so the picker stays usable when neither `/models` nor models.dev can be refreshed.
 - Zen Claude, Zen GPT, Zen Gemini, and Go MiniMax families now use the correct transport automatically instead of being forced through a single OpenAI-compatible route.
 
+---
+
 ## [0.1.5] — 2026-05-20
 
 ### Fixed
@@ -203,6 +239,8 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - Fixed vision requests with image attachments failing before upload due to stack overflow while encoding image bytes.
 - Avoid forcing Qwen `thinking_budget` on vision requests when Thinking is set to Auto, reducing image request token pressure from Alibaba-backed models.
 - Stopped advertising image input support for models that do not support image attachments in OpenCode metadata: `glm-5`, `glm-5.1`, `minimax-m2.5`, `minimax-m2.7`, `minimax-m2.5-free`, `mimo-v2-pro`, and `mimo-v2.5-pro`.
+
+---
 
 ## [0.1.4] — 2026-05-17
 
@@ -221,6 +259,8 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - Filter deprecated OpenCode models using the models.dev registry before registering them with VS Code, with a local safety list for free models that now return provider 404s (`ring-2.6-1t-free`, `trinity-large-preview-free`).
 - Removed stale unavailable models from bundled fallback lists so offline fallback does not reintroduce models that can no longer serve requests.
 - API errors now use the active provider display name instead of always saying `OpenCode Go`.
+
+---
 
 ## [0.1.3] — 2026-05-16
 
@@ -247,14 +287,18 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - `provideLanguageModelChatResponse` now resolves the raw model ID via `model.rawModelId` before calling `modelLimits()` and forwarding the ID to the backend, so the revisioned effective ID is never sent to the OpenCode API.
 - `modelLimits()` now accepts an optional `vendor` parameter; callers inside `OpenCodeProvider` pass `this.definition.vendor` for accurate per-provider lookups.
 
+---
+
 ## [0.1.2] — 2026-05-14
 
 ### Added
+
 - Added `opencodego.debugReasoning` to write provider `reasoning_content` to **Output → OpenCode** for opt-in debugging.
 - Added a separate native **OpenCode Zen** provider (`opencodezen`) with its own BYOK configuration flow and free-model list from `https://opencode.ai/zen/v1/models`.
 - Added `OpenCode Zen: Diagnostics` for inspecting Zen models registered with VS Code.
 
 ### Fixed
+
 - Kept advertised context-size metadata consistent across the Language Models table, Copilot model picker tooltip, and chat context indicator while preserving the full OpenCode Go max-output limit for API requests.
 - Improved provider token counting for mixed chat/tool content so Copilot receives a more realistic context usage estimate.
 - Stopped resolving an extra unconfigured OpenCode Go model group from the legacy command-stored API key.
@@ -264,16 +308,22 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - Preserved assistant tool calls and tool results when converting VS Code chat history back into OpenAI-compatible messages.
 - Captured and replayed DeepSeek `reasoning_content` on follow-up tool-result requests so thinking-mode models can continue multi-step tool workflows without provider errors.
 
+---
+
 ## [0.1.1] — 2026-05-14
 
 ### Fixed
+
 - Switched the Language Models gear flow to VS Code's native provider configuration schema.
 - Added `apiKey` as a secret provider configuration field so configure/add prompts proceed from **Group Name** to **OpenCode Go API Key**.
 - Provider now reads the configured API key from VS Code's language model configuration, with the command-stored key kept as a fallback.
 
+---
+
 ## [0.1.0] — 2026-05-14
 
 ### Added
+
 - Initial public release on VS Code Marketplace
 - Live model list fetched from `https://opencode.ai/zen/go/v1/models` on activation
 - Bundled fallback model metadata table (context window + max output tokens per model)

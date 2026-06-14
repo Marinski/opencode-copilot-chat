@@ -1,5 +1,5 @@
 # 🧠 OPENCODE COPILOT CHAT DEVLOG
-**Branch:** `main` | **Updated:** 2026-06-14 Asia/Jakarta | **Current Phase:** v0.2.9 — Community PRs & Repo Discoverability ✅
+**Branch:** `main` | **Updated:** 2026-06-14 Asia/Jakarta | **Current Phase:** v0.3.0 — Agents Window Visibility ✅
 
 ---
 
@@ -8,10 +8,10 @@
 | Field | Value |
 |-------|-------|
 | **Last Session** | 2026-06-14 |
-| **Worked On** | Community growth session: merged 3 community PRs (#34 docs, #37 GIF, #38 bug fix), rewrote README for virality, optimized GitHub topics (20), enabled Discussions, created `good first issue` labels + 3 issues, added `.github/` community files (CONTRIBUTING, templates, CI, dependabot, funding), responded to community issues (#11, #23, #35). Version bumped to 0.2.9. |
-| **Stopped At** | `main` at `0.2.9`; compile clean (0 errors); docs written (issue #23, CHANGELOG, devlog). |
-| **Next Action** | → Build VSIX and publish to VS Code Marketplace, or implement IMPL-01 (agents window model visibility — Option A duplicate model registration, pending community consensus on issue #11). |
-| **Open Issues** | (1) Issue #11 — Agents window model visibility: awaiting community input on Option A (duplicate models) config + ID strategy. (2) Issue #23 — Go Usage tracker out of sync: awaiting user feedback on Options B+C (device-only label + configurable subscription start date). (3) Qwen image requests can still hit provider-side Alibaba quota. (4) `qwen3.6-plus-free` can loop tool calls instead of synthesizing final text during broad agent tasks. |
+| **Worked On** | Reviewed, tested, and merged PR #39 (@Marinski) — Agents window (Copilot CLI) model visibility. Local verification: compile + VSIX install + Agents window test all PASS. Corrected a squash merge mistake (force-reset main, re-merged via PR #40 with proper merge commit preserving Marinski's authorship). Updated docs (feature doc 06, reference doc 01 status, CHANGELOG `[Unreleased]`). |
+| **Stopped At** | `main` at merge commit `9b2bf45`; compile clean (0 errors); docs written (feature 06, reference 01 updated, CHANGELOG `[Unreleased]`). |
+| **Next Action** | → Build VSIX and publish to VS Code Marketplace (version bump to 0.2.10 or 0.3.0). Optionally fix the cosmetic `showDiagnostics()` duplicate-model listing (filter out `::agent-host` variant). |
+| **Open Issues** | (1) Issue #23 — Go Usage tracker out of sync: awaiting user feedback on Options B+C (device-only label + configurable subscription start date). (2) Qwen image requests can still hit provider-side Alibaba quota. (3) `qwen3.6-plus-free` can loop tool calls instead of synthesizing final text during broad agent tasks. (4) Issue #11 now CLOSED — resolved by PR #39. |
 
 ---
 
