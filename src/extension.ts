@@ -1128,13 +1128,15 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
     const settings = getSettings();
     const metadataSnapshot = await this.getMetadataSnapshot();
 
-    return models.map((modelId) => {
+    return models.flatMap((modelId) => {
       const metadata = this.resolveModelMetadata(modelId, metadataSnapshot);
       const routing = resolveModelRouting(modelId, this.definition);
       const effectiveModelId = toEffectiveModelId(modelId, this.definition.vendor);
+      const agentHostModelId = `${effectiveModelId}::agent-host`;
       const limits = modelLimits(metadata, settings);
       this.apiKeysByModelId.set(modelId, apiKey);
       this.apiKeysByModelId.set(effectiveModelId, apiKey);
+      this.apiKeysByModelId.set(agentHostModelId, apiKey);
 
       const capacityNote = CAPACITY_LIMITED_MODEL_NOTES[modelId];
       const modalityBadges = formatModalityBadges(metadata);
@@ -1142,8 +1144,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       const baseTooltip = `${this.definition.displayName} model: ${modelId}`;
       const configurationSchema = modelConfigurationSchema(modelId, metadata);
 
-      const info: OpenCodeModel = {
-        id: effectiveModelId,
+      const sharedFields: Omit<OpenCodeModel, "id" | "targetChatSessionType"> = {
         rawModelId: modelId,
         name: `${this.definition.modelNamePrefix} / ${formatModelName(modelId)}`,
         family: `${this.definition.vendor}-${modelId}-${MODEL_METADATA_REVISION}`,
@@ -1177,9 +1178,23 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
         ...(configurationSchema ? { configurationSchema } : {})
       };
 
-      this.log(`Model registered: id=${info.id} family=${info.family} metadataSource=${metadata.source} endpointKind=${routing.endpointKind} endpointUrl=${routing.endpointUrl} configurationSchema=${configurationSchema ? JSON.stringify(configurationSchema) : "none"}`);
+      // General variant — no targetChatSessionType → visible in Chat view
+      const info: OpenCodeModel = { ...sharedFields, id: effectiveModelId };
 
-      return info;
+      // Agents-window variant — targetChatSessionType must match the `type`
+      // declared in the Copilot extension's chatSessions contribution:
+      //   { "type": "copilotcli", "requiresCustomModels": true, ... }
+      // Each surface only sees its own variant so there is no duplication.
+      const agentHostInfo: OpenCodeModel = {
+        ...sharedFields,
+        id: agentHostModelId,
+        targetChatSessionType: "copilotcli"
+      };
+
+      this.log(`Model registered: id=${info.id} family=${info.family} metadataSource=${metadata.source} endpointKind=${routing.endpointKind} endpointUrl=${routing.endpointUrl} configurationSchema=${configurationSchema ? JSON.stringify(configurationSchema) : "none"}`);
+      this.log(`Model registered (agents-window): id=${agentHostInfo.id} targetChatSessionType=copilotcli`);
+
+      return [info, agentHostInfo];
     });
   }
 
