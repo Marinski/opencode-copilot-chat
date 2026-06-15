@@ -222,28 +222,32 @@ Per-model reasoning configuration, dynamically enhanced with `reasoning_options`
 
 ### 🪟 Agents Window (Copilot CLI) Support
 
-OpenCode models appear in the VS Code **Agents window** model picker when starting a Copilot CLI / Background agent session — not just the regular Chat view. Each model is registered with a `targetChatSessionType` so VS Code's picker filter surfaces them alongside Claude and GPT models when selecting a Copilot CLI agent.
+OpenCode models appear in the VS Code **Agents window** model picker when starting a Copilot CLI / Background agent session — not just the regular Chat view. Agent models are registered under **separate vendor IDs** (`opencodego-agent`, `opencodezen-agent`) with `targetChatSessionType: "copilotcli"` so they show up in the Agents window without duplicating in the Chat view or Manage panel.
+
+**How it works:**
+
+| Setting | Default | What it controls |
+|---------|---------|------------------|
+| `opencodego.agentsWindow` | `true` | Registers agent providers at runtime |
+| `opencodego.showAgentModelsInManagePanel` | `false` | Shows agent vendors in the Manage Language Models panel |
 
 **Setup:**
 
-> **Heads-up:** Agents window support is **opt-in** since v0.3.1 (PR #42). In v0.3.0 every model was registered twice and the duplicate leaked into the Language Models management UI (#41). Two settings are now required to turn it back on.
-
-1. Add this to your VS Code `settings.json` to enable the extension in the Agents window process:
+1. Agent models are enabled by default (`agentsWindow: true`). No changes needed for basic usage.
+2. Add this to your VS Code `settings.json` to enable the extension in the Agents window process:
    ```json
    "extensions.supportAgentsWindow": {
      "ltmoerdani.opencode-copilot-chat": true
    }
    ```
-2. **Also** opt into the duplicate registration with the extension setting (default `false`):
-   ```json
-   "opencodego.showInAgentsWindow": true
-   ```
-   When enabled, the duplicate entry gets an `(Agents)` suffix in the Language Models management UI so the two stay distinguishable.
 3. Reload the window (`Developer: Reload Window`).
 4. Open the **Agents window** → start a new session → select **Copilot CLI** as the agent type.
 5. Open the model picker — OpenCode Go and Zen models appear.
 
-When `opencodego.showInAgentsWindow` is off (default), each model appears exactly once in every picker and the management UI. Routing, API key, and metadata resolution are unchanged regardless of the setting — the `::agent-host` suffix in the agents-window variant is stripped by `resolveRawModelId()`.
+To manage agent API keys separately or see agent vendors in the Manage panel, enable:
+```json
+"opencodego.showAgentModelsInManagePanel": true
+```
 
 ### 🛠️ Smart Routing & Reliability
 
@@ -275,6 +279,8 @@ When `opencodego.showInAgentsWindow` is off (default), each model appears exactl
 | `opencodego.streamIdleTimeoutSeconds` | `120` | Cancel if stream goes idle |
 | `opencodego.showUsageStatusBar` | `true` | Show usage summary in status bar |
 | `opencodego.freeOnly` | `true` | Zen: free models only. `false` = include paid |
+| `opencodego.agentsWindow` | `true` | Register agent models for the Agents window |
+| `opencodego.showAgentModelsInManagePanel` | `false` | Show agent vendors in Manage Language Models |
 | `opencodego.stripThinkTags` | `"auto"` | Strip `<think>` tags (`never`/`auto`/`always`) |
 | `opencodego.thinking.deepseek` | `"off"` | `off`/`low`/`medium`/`high`/`max` |
 | `opencodego.thinking.glm` | `"off"` | `on`/`off` |
@@ -369,13 +375,12 @@ Known issue with `qwen3.6-plus-free` on broad agent tasks (see [issue #1](./docs
 <details>
 <summary><b>How do I use OpenCode models in the Agents window (Copilot CLI)?</b></summary>
 
-Agents window support is **opt-in** since v0.3.1. Two settings are required in your VS Code `settings.json`:
+Agent models are enabled by default (`opencodego.agentsWindow: true`). Just add this to your VS Code `settings.json`:
 
 ```json
 "extensions.supportAgentsWindow": {
   "ltmoerdani.opencode-copilot-chat": true
-},
-"opencodego.showInAgentsWindow": true
+}
 ```
 
 Then reload the window, open the **Agents window**, start a Copilot CLI session, and pick any OpenCode model from the picker. See the [Agents Window section](#-agents-window-copilot-cli-support) above for details.

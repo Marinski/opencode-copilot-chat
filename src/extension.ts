@@ -94,7 +94,7 @@ const KNOWN_UNAVAILABLE_MODEL_IDS = new Set([
 const DEFAULT_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 const OPEN_CODE_CLIENT = "vscode-copilot-chat";
-const OPEN_CODE_USER_AGENT = "opencode-copilot-chat/0.2.7 VSCode";
+const OPEN_CODE_USER_AGENT = "opencode-copilot-chat/0.3.2 VSCode";
 
 /** Create an agent-variant provider definition that inherits URLs, models, and filters from a base. */
 function providerVariant(

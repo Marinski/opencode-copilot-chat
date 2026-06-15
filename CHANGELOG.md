@@ -1,6 +1,30 @@
 # Changelog
 
 All notable changes to the **OpenCode Go BYOK Provider** extension are documented here.
+
+## [0.3.2] — 2026-06-15
+
+### Fixed
+
+- **`[Model Picker]` Agent models no longer duplicated in the Manage Language Models panel.** Replaced the double-registration approach (PR #39/#42) with separate vendor IDs (`opencodego-agent`, `opencodezen-agent`). Each vendor now shows only its own models — zero duplication in any picker or management UI. Agent models are hidden from the Manage panel by default (`showAgentModelsInManagePanel: false`) while still working in the Agents window.
+
+### Added
+
+- **`opencodego.agentsWindow`** boolean setting (default `true`). Controls whether agent-host providers are registered at runtime. When enabled, agent models appear in the Agents window picker.
+- **`opencodego.showAgentModelsInManagePanel`** boolean setting (default `false`). Controls whether agent vendors appear in the Manage Language Models panel. Enable to manage agent API keys separately.
+- **`resolveBaseVendor()`** helper in `providerTypes.ts` — maps agent vendor IDs back to their base vendor for routing and metadata resolution.
+- **`providerVariant()`** helper in `extension.ts` — creates DRY agent provider definitions from base definitions.
+- **BYOK key synchronization** — main provider stores API key via `context.secrets.store()` and triggers agent provider re-resolution via `triggerChange()`.
+
+### Changed
+
+- Agent vendors (`opencodego-agent`, `opencodezen-agent`) declared in `package.json` with `when: "config.opencodego.showAgentModelsInManagePanel"` clause.
+- `routing.ts` uses `resolveBaseVendor()` before all vendor comparisons to fix routing for agent variants.
+- `metadata.ts` `toEffectiveModelId()` vendor parameter widened to accept `AllProviderVendor`.
+- Replaces the `opencodego.showInAgentsWindow` setting from PR #42 with the cleaner two-setting approach (`agentsWindow` + `showAgentModelsInManagePanel`).
+
+Fixes [#41](https://github.com/ltmoerdani/opencode-copilot-chat/issues/41). Alternative to PR [#42](https://github.com/ltmoerdani/opencode-copilot-chat/pull/42) by [@Wallacy](https://github.com/Wallacy).
+
 ## [0.3.1] — 2026-06-15
 
 ### Fixed

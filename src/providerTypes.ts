@@ -1,7 +1,7 @@
 export const GO_VENDOR = "opencodego" as const;
 export const ZEN_VENDOR = "opencodezen" as const;
-export const AGENT_GO_VENDOR = "opencodego-agent-host" as const;
-export const AGENT_ZEN_VENDOR = "opencodezen-agent-host" as const;
+export const AGENT_GO_VENDOR = "opencodego-agent" as const;
+export const AGENT_ZEN_VENDOR = "opencodezen-agent" as const;
 
 /** Base vendor IDs used for metadata lookups and API routing. */
 export type ProviderVendor = typeof GO_VENDOR | typeof ZEN_VENDOR;

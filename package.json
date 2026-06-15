@@ -238,12 +238,12 @@
         }
       },
       {
-        "vendor": "opencodego-agent-host",
+        "vendor": "opencodego-agent",
         "displayName": "OpenCode Go (Agents)",
         "when": "config.opencodego.showAgentModelsInManagePanel"
       },
       {
-        "vendor": "opencodezen-agent-host",
+        "vendor": "opencodezen-agent",
         "displayName": "OpenCode Zen (Agents)",
         "when": "config.opencodego.showAgentModelsInManagePanel"
       }
