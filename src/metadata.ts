@@ -141,7 +141,7 @@ export interface ModelsDevResponse {
 export const MODELS_DEV_API_URL = "https://models.dev/api.json";
 export const MODEL_METADATA_REVISION = "session-2026-05-21-b";
 export const MODEL_METADATA_CACHE_KEY = "opencode.modelMetadataCache.v5";
-export const MODEL_METADATA_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+export const MODEL_METADATA_CACHE_TTL_MS = 1 * 60 * 60 * 1000;
 
 const DEFAULT_MODEL_LIMITS: BaseModelLimits = {
   contextWindow: 262144,
