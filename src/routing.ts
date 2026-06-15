@@ -1,6 +1,7 @@
 import {
   GO_VENDOR,
   ZEN_VENDOR,
+  resolveBaseVendor,
   type ProviderRoutingDefinition,
 } from "./providerTypes";
 
@@ -17,7 +18,10 @@ export function resolveModelRouting(
   endpointUrl: string;
   sdkPackage?: string;
 } {
-  if (provider.vendor === ZEN_VENDOR && /^gpt-/i.test(modelId)) {
+  // Resolve agent-host variants to their base vendor for routing decisions.
+  const baseVendor = resolveBaseVendor(provider.vendor);
+
+  if (baseVendor === ZEN_VENDOR && /^gpt-/i.test(modelId)) {
     return {
       endpointKind: "responses",
       endpointUrl: provider.responsesUrl ?? provider.chatCompletionsUrl,
@@ -27,7 +31,7 @@ export function resolveModelRouting(
 
   if (
     /^claude-/i.test(modelId) ||
-    (provider.vendor === GO_VENDOR && /^minimax-m2\./i.test(modelId)) ||
+    (baseVendor === GO_VENDOR && /^minimax-m2\./i.test(modelId)) ||
     isMessagesQwenModel(modelId)
   ) {
     return {
@@ -37,7 +41,7 @@ export function resolveModelRouting(
     };
   }
 
-  if (provider.vendor === ZEN_VENDOR && /^gemini-/i.test(modelId)) {
+  if (baseVendor === ZEN_VENDOR && /^gemini-/i.test(modelId)) {
     return {
       endpointKind: "google",
       endpointUrl: `${provider.modelsUrl}/${modelId}`,

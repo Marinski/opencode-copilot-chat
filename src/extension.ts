@@ -34,7 +34,7 @@ import {
   streamResponsesApi as runStreamResponsesApi,
   type TransportRequestSummary,
 } from "./streaming";
-import { GO_VENDOR, ZEN_VENDOR } from "./providerTypes";
+import { GO_VENDOR, ZEN_VENDOR, AGENT_GO_VENDOR, AGENT_ZEN_VENDOR, resolveBaseVendor, type AllProviderVendor, type ProviderVendor } from "./providerTypes";
 import { isInternalDataPart } from "./chatParts";
 
 import {
@@ -55,11 +55,14 @@ const RECENT_TRANSPORT_SUMMARY_STORAGE_PREFIX = "opencode.recentTransportSummari
 let usageStatusBarItem: vscode.StatusBarItem | undefined;
 let goUsageStatusBarItem: vscode.StatusBarItem | undefined;
 
+/** Maps base vendor → agent-variant provider instance for cross-resolution. */
+const agentProvidersByBaseVendor = new Map<string, OpenCodeProvider>();
+
 let goUsageTracker: GoUsageTracker | undefined;
 let usageWebviewPanel: vscode.WebviewPanel | undefined;
 
 interface ProviderDefinition {
-  vendor: typeof GO_VENDOR | typeof ZEN_VENDOR;
+  vendor: AllProviderVendor;
   displayName: string;
   modelNamePrefix: string;
   modelsUrl: string;
@@ -70,6 +73,10 @@ interface ProviderDefinition {
   testModelId: string;
   fallbackModels: string[];
   filterModel?: (modelId: string) => boolean;
+  /** When true, this provider only serves agent-host models (targetChatSessionType=copilotcli). */
+  isAgentVariant?: boolean;
+  /** The vendor key for the main (non-agent) provider definition this variant mirrors. */
+  baseVendor?: typeof GO_VENDOR | typeof ZEN_VENDOR;
 }
 
 type ModelEndpointKind =
@@ -89,8 +96,30 @@ const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 const OPEN_CODE_CLIENT = "vscode-copilot-chat";
 const OPEN_CODE_USER_AGENT = "opencode-copilot-chat/0.2.7 VSCode";
 
-const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
-  [GO_VENDOR]: {
+/** Create an agent-variant provider definition that inherits URLs, models, and filters from a base. */
+function providerVariant(
+  base: ProviderDefinition,
+  agentVendor: typeof AGENT_GO_VENDOR | typeof AGENT_ZEN_VENDOR,
+  displayName: string,
+  categoryOrder: number,
+): ProviderDefinition {
+  return {
+    vendor: agentVendor,
+    displayName,
+    modelNamePrefix: base.modelNamePrefix,
+    modelsUrl: base.modelsUrl,
+    chatCompletionsUrl: base.chatCompletionsUrl,
+    messagesUrl: base.messagesUrl,
+    responsesUrl: base.responsesUrl,
+    categoryOrder,
+    testModelId: base.testModelId,
+    fallbackModels: base.fallbackModels,
+    filterModel: base.filterModel,
+  };
+}
+
+const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = (() => {
+  const go: ProviderDefinition = {
     vendor: GO_VENDOR,
     displayName: "OpenCode Go",
     modelNamePrefix: "OpenCode Go",
@@ -117,8 +146,8 @@ const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
       "qwen3.6-plus",
       "qwen3.5-plus",
     ]
-  },
-  [ZEN_VENDOR]: {
+  };
+  const zen: ProviderDefinition = {
     vendor: ZEN_VENDOR,
     displayName: "OpenCode Zen",
     modelNamePrefix: "OpenCode Zen",
@@ -173,8 +202,14 @@ const PROVIDERS: Record<ProviderDefinition["vendor"], ProviderDefinition> = {
       "big-pickle"
     ],
     filterModel: (modelId) => vscode.workspace.getConfiguration("opencodego").get("freeOnly", true) ? modelId.endsWith("-free") || FREE_ZEN_MODEL_IDS.has(modelId) : true
-  }
-};
+  };
+  return {
+    [GO_VENDOR]: go,
+    [ZEN_VENDOR]: zen,
+    [AGENT_GO_VENDOR]: { ...providerVariant(go, AGENT_GO_VENDOR, "OpenCode Go (Agents)", 4), isAgentVariant: true, baseVendor: GO_VENDOR },
+    [AGENT_ZEN_VENDOR]: { ...providerVariant(zen, AGENT_ZEN_VENDOR, "OpenCode Zen (Agents)", 5), isAgentVariant: true, baseVendor: ZEN_VENDOR },
+  };
+})();
 
 type ApiRole = "user" | "assistant" | "tool";
 
@@ -421,7 +456,7 @@ export function activate(context: vscode.ExtensionContext) {
   const goProvider = new OpenCodeProvider(context, PROVIDERS[GO_VENDOR]);
   const zenProvider = new OpenCodeProvider(context, PROVIDERS[ZEN_VENDOR]);
 
-  context.subscriptions.push(
+  const subscriptions: vscode.Disposable[] = [
     vscode.lm.registerLanguageModelChatProvider(GO_VENDOR, goProvider),
     vscode.lm.registerLanguageModelChatProvider(ZEN_VENDOR, zenProvider),
     vscode.commands.registerCommand("opencodego.manage", () => goProvider.manage()),
@@ -430,8 +465,23 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("opencodezen.diagnostics", () => zenProvider.showDiagnostics()),
     vscode.commands.registerCommand("opencodego.modelPickerDiagnostics", () => showModelPickerDiagnostics()),
     vscode.commands.registerCommand("opencodego.setThinkingEffort", () => showThinkingEffortPicker()),
-    vscode.commands.registerCommand("opencodego.showUsageDetails", () => showUsageWebview(context))
-  );
+    vscode.commands.registerCommand("opencodego.showUsageDetails", () => showUsageWebview(context)),
+  ];
+
+  // Agent-host providers for the Copilot Agents window (opt-in via config).
+  const enableAgents = vscode.workspace.getConfiguration("opencodego").get<boolean>("agentsWindow", true);
+  if (enableAgents) {
+    const agentGoProvider = new OpenCodeProvider(context, PROVIDERS[AGENT_GO_VENDOR]);
+    const agentZenProvider = new OpenCodeProvider(context, PROVIDERS[AGENT_ZEN_VENDOR]);
+    agentProvidersByBaseVendor.set(GO_VENDOR, agentGoProvider);
+    agentProvidersByBaseVendor.set(ZEN_VENDOR, agentZenProvider);
+    subscriptions.push(
+      vscode.lm.registerLanguageModelChatProvider(AGENT_GO_VENDOR, agentGoProvider),
+      vscode.lm.registerLanguageModelChatProvider(AGENT_ZEN_VENDOR, agentZenProvider),
+    );
+  }
+
+  context.subscriptions.push(...subscriptions);
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -445,14 +495,18 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 async function warmModelPickerMetadata(): Promise<void> {
-  await Promise.allSettled([
-    vscode.lm.selectChatModels({ vendor: GO_VENDOR }),
-    vscode.lm.selectChatModels({ vendor: ZEN_VENDOR })
-  ]);
+  const vendors: string[] = [GO_VENDOR, ZEN_VENDOR];
+  if (vscode.workspace.getConfiguration("opencodego").get<boolean>("agentsWindow", true)) {
+    vendors.push(AGENT_GO_VENDOR, AGENT_ZEN_VENDOR);
+  }
+  await Promise.allSettled(vendors.map(v => vscode.lm.selectChatModels({ vendor: v })));
 }
 
 async function showModelPickerDiagnostics(): Promise<void> {
-  const vendors = [GO_VENDOR, ZEN_VENDOR, "copilot"];
+  const vendors: string[] = [GO_VENDOR, ZEN_VENDOR, "copilot"];
+  if (vscode.workspace.getConfiguration("opencodego").get<boolean>("agentsWindow", true)) {
+    vendors.splice(2, 0, AGENT_GO_VENDOR, AGENT_ZEN_VENDOR);
+  }
   const sections: string[] = [];
 
   for (const vendor of vendors) {
@@ -803,6 +857,16 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
   private readonly recentTransportSummaries: RecentTransportSummary[] = [];
   private outputChannel: vscode.OutputChannel | undefined;
 
+  /** Allow the main provider to trigger re-resolution on the agent variant after BYOK key is stored. */
+  triggerChange(): void {
+    this.changeEmitter.fire();
+  }
+
+  /** Resolves agent-host variants to their base vendor for metadata/routing. */
+  private get baseVendor(): ProviderVendor {
+    return resolveBaseVendor(this.definition.vendor);
+  }
+
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly definition: ProviderDefinition
@@ -832,7 +896,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
   ): ResolvedModelMetadata {
     return resolveModelMetadata(
       modelId,
-      this.definition.vendor,
+      this.baseVendor,
       snapshot,
       this.liveModelMetadataById,
     );
@@ -1089,7 +1153,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       `  status: ${metadata.status ?? "active"}`,
       `  thinkingFamily: ${thinkingFamily(rawModelId) ?? "none"}`,
       `  configurationSchema: ${JSON.stringify((model as unknown as { configurationSchema?: unknown }).configurationSchema ?? null)}`,
-      ...(hasExplicitModelLimits(rawModelId, this.definition.vendor) ? [] : ["  limits: using bundled fallback"])
+      ...(hasExplicitModelLimits(rawModelId, this.baseVendor) ? [] : ["  limits: using bundled fallback"])
       ].join("\n");
     });
 
@@ -1114,10 +1178,29 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
     options: vscode.PrepareLanguageModelChatModelOptions,
     token: vscode.CancellationToken
   ): Promise<OpenCodeModel[]> {
-    const apiKey = getConfiguredApiKey(options as ConfiguredLanguageModelInfoOptions);
+    let apiKey = getConfiguredApiKey(options as ConfiguredLanguageModelInfoOptions)
+      // Agent variant providers inherit the API key from the base vendor's secret
+      // when no explicit key is configured for them in the Manage panel.
+      ?? (this.definition.isAgentVariant ? await this.context.secrets.get(SECRET_KEY) : undefined);
 
     if (!apiKey) {
       return [];
+    }
+
+    // When a non-agent provider resolves its API key via BYOK configuration,
+    // persist it so that agent-variant providers (which have no BYOK entry)
+    // can inherit it from the extension's secret storage.
+    if (!this.definition.isAgentVariant) {
+      const existing = await this.context.secrets.get(SECRET_KEY);
+      if (existing !== apiKey) {
+        await this.context.secrets.store(SECRET_KEY, apiKey);
+      }
+      // Trigger re-resolution on the matching agent provider so it can
+      // discover the newly stored key and show up in the Agents window.
+      const agentProvider = agentProvidersByBaseVendor.get(this.definition.vendor);
+      if (agentProvider) {
+        agentProvider.triggerChange();
+      }
     }
 
     if (token.isCancellationRequested) {
@@ -1127,16 +1210,6 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
     const models = await this.fetchModels();
     const settings = getSettings();
     const metadataSnapshot = await this.getMetadataSnapshot();
-
-    // The Agents-window variant (targetChatSessionType: "copilotcli") is only
-    // hidden from the Chat view's in-session dropdown by filterModelsForSession().
-    // Surfaces that enumerate the raw registration list — most notably the Language
-    // Models management UI — show ALL registered models with no session filtering,
-    // so the ::agent-host copy appeared there too (issue #41, regression from PR #39).
-    // Gate the duplicate behind an opt-in setting so the default stays clean.
-    const showInAgentsWindow = vscode.workspace
-      .getConfiguration("opencodego")
-      .get("showInAgentsWindow", false);
 
     return models.flatMap((modelId) => {
       const metadata = this.resolveModelMetadata(modelId, metadataSnapshot);
@@ -1150,14 +1223,14 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
 
       const capacityNote = CAPACITY_LIMITED_MODEL_NOTES[modelId];
       const modalityBadges = formatModalityBadges(metadata);
-      const baseDetail = this.definition.vendor === ZEN_VENDOR && isFreeZenModel(modelId) ? "Free" : this.definition.displayName;
+      const baseDetail = this.baseVendor === ZEN_VENDOR && isFreeZenModel(modelId) ? "Free" : this.definition.displayName;
       const baseTooltip = `${this.definition.displayName} model: ${modelId}`;
       const configurationSchema = modelConfigurationSchema(modelId, metadata);
 
       const sharedFields: Omit<OpenCodeModel, "id" | "targetChatSessionType"> = {
         rawModelId: modelId,
         name: `${this.definition.modelNamePrefix} / ${formatModelName(modelId)}`,
-        family: `${this.definition.vendor}-${modelId}-${MODEL_METADATA_REVISION}`,
+        family: `${this.definition.isAgentVariant && this.definition.baseVendor ? this.definition.baseVendor : this.definition.vendor}-${modelId}-${MODEL_METADATA_REVISION}`,
         // Include effective limits in version so VS Code invalidates stale
         // picker metadata after limit changes (eg. 2M -> 262K corrections).
         version: `1.2.0-${MODEL_METADATA_REVISION}-${limits.contextWindow}-${limits.maxOutputTokens}`,
@@ -1182,39 +1255,33 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
         endpointKind: routing.endpointKind,
         provider: this.definition,
         // Pricing fields (VS Code languageModelPricing proposal)
-        ...modelPricingFields(modelId, this.definition.vendor, metadata),
+        ...modelPricingFields(modelId, this.baseVendor, metadata),
         // Inline so Copilot Chat picks up the Thinking submenu directly
         // (parity with zelosleone/Opencode-Go-For-Copilot pattern).
         ...(configurationSchema ? { configurationSchema } : {})
       };
+
+      if (this.definition.isAgentVariant) {
+        // Agent-host variant — only returned by agent providers.
+        // targetChatSessionType must match the `type` declared in the
+        // Copilot extension's chatSessions contribution:
+        //   { "type": "copilotcli", "requiresCustomModels": true, ... }
+        const agentHostInfo: OpenCodeModel = {
+          ...sharedFields,
+          id: agentHostModelId,
+          targetChatSessionType: "copilotcli"
+        };
+
+        this.log(`Model registered (agents): id=${agentHostInfo.id} targetChatSessionType=copilotcli`);
+        return [agentHostInfo];
+      }
 
       // General variant — no targetChatSessionType → visible in Chat view
       const info: OpenCodeModel = { ...sharedFields, id: effectiveModelId };
 
       this.log(`Model registered: id=${info.id} family=${info.family} metadataSource=${metadata.source} endpointKind=${routing.endpointKind} endpointUrl=${routing.endpointUrl} configurationSchema=${configurationSchema ? JSON.stringify(configurationSchema) : "none"}`);
 
-      // When showInAgentsWindow is off (default), return only the general
-      // variant so each model appears exactly once in all pickers and the
-      // Language Models management UI (regression fix for issue #41).
-      if (!showInAgentsWindow) {
-        return [info];
-      }
-
-      // Agents-window variant — targetChatSessionType must match the `type`
-      // declared in the Copilot extension's chatSessions contribution:
-      //   { "type": "copilotcli", "requiresCustomModels": true, ... }
-      // Name gets an "(Agents)" suffix so the two entries are visually
-      // distinguishable in the Language Models management UI when opt-in is on.
-      const agentHostInfo: OpenCodeModel = {
-        ...sharedFields,
-        id: agentHostModelId,
-        name: `${sharedFields.name} (Agents)`,
-        targetChatSessionType: "copilotcli"
-      };
-
-      this.log(`Model registered (agents-window): id=${agentHostInfo.id} targetChatSessionType=copilotcli`);
-
-      return [info, agentHostInfo];
+      return [info];
     });
   }
 
@@ -1269,7 +1336,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
         options.requestInitiator,
       );
       updateUsageStatusBar(this.definition.displayName, rawModelId, summary);
-      if (this.definition.vendor === GO_VENDOR && goUsageTracker) {
+      if (this.baseVendor === GO_VENDOR && goUsageTracker) {
         this.log(`[go-usage] Recording: provider=${summary.providerDisplayName} model=${summary.modelId} promptTokens=${summary.promptTokens ?? "n/a"} completionTokens=${summary.completionTokens ?? "n/a"} cachedTokens=${summary.cachedTokens ?? "n/a"} status=${summary.status ?? "n/a"} error=${summary.errorMessage ?? "none"}`);
         goUsageTracker.record(summary, metadata.cost);
         refreshGoUsageStatusBar();
@@ -1441,7 +1508,7 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       const metadataSnapshot = await this.getMetadataSnapshot();
       const filteredModelIds = uniqueModelIds.filter((modelId) =>
         !KNOWN_UNAVAILABLE_MODEL_IDS.has(modelId)
-        && !shouldHideDeprecatedModel(modelId, this.definition.vendor, metadataSnapshot)
+        && !shouldHideDeprecatedModel(modelId, this.baseVendor, metadataSnapshot)
       );
 
       const removedModelIds = uniqueModelIds.filter((modelId) => !filteredModelIds.includes(modelId));
@@ -3037,21 +3104,19 @@ function shouldHideDeprecatedModel(
   vendor: ProviderDefinition["vendor"],
   snapshot: CachedModelMetadataSnapshot,
 ): boolean {
-  if (vendor !== ZEN_VENDOR) {
+  if (resolveBaseVendor(vendor) !== ZEN_VENDOR) {
     return false;
   }
-  return snapshot.providers[vendor][modelId]?.status === "deprecated";
+  return snapshot.providers[ZEN_VENDOR]?.[modelId]?.status === "deprecated";
 }
 
 function resolveRawModelId(modelId: string): string {
   const [base] = modelId.split("::");
-  const prefix = `${GO_VENDOR}:`;
-  const zenPrefix = `${ZEN_VENDOR}:`;
-  if (base.startsWith(prefix)) {
-    return base.slice(prefix.length);
-  }
-  if (base.startsWith(zenPrefix)) {
-    return base.slice(zenPrefix.length);
+  const prefixes = [`${GO_VENDOR}:`, `${ZEN_VENDOR}:`, `${AGENT_GO_VENDOR}:`, `${AGENT_ZEN_VENDOR}:`];
+  for (const prefix of prefixes) {
+    if (base.startsWith(prefix)) {
+      return base.slice(prefix.length);
+    }
   }
   return base;
 }

@@ -1,4 +1,4 @@
-import { GO_VENDOR, ZEN_VENDOR, type ProviderVendor } from "./providerTypes";
+import { GO_VENDOR, ZEN_VENDOR, type ProviderVendor, type AllProviderVendor } from "./providerTypes";
 
 export interface BaseModelLimits {
   contextWindow: number;
@@ -278,7 +278,7 @@ export function isFreshModelMetadata(
 
 export function toEffectiveModelId(
   modelId: string,
-  vendor: ProviderVendor,
+  vendor: AllProviderVendor,
 ): string {
   return `${vendor}:${modelId}::${MODEL_METADATA_REVISION}`;
 }

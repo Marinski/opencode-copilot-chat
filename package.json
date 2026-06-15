@@ -140,10 +140,10 @@
           "default": true,
           "description": "When enabled, only free OpenCode Zen models are shown in the Copilot model selector. Disable to include paid Zen models as well."
         },
-        "opencodego.showInAgentsWindow": {
+        "opencodego.agentsWindow": {
           "type": "boolean",
-          "default": false,
-          "markdownDescription": "Also expose OpenCode models in the Agents window (Copilot CLI session) model picker by registering each model a second time with `targetChatSessionType: \"copilotcli\"`. **Disabled by default** to keep the model list clean — when disabled each model appears exactly once everywhere. When enabled, an `(Agents)` suffix is added to the duplicate entry so the two are distinguishable in the Language Models management UI. Also requires `extensions.supportAgentsWindow: { \"ltmoerdani.opencode-copilot-chat\": true }` to activate this extension in the Agents window."
+          "default": true,
+          "markdownDescription": "Register separate agent-host providers for the Copilot Agents window. Each agent vendor appears as its own group in the Manage Language Models panel, so models are never duplicated. Disable to hide the Agents section entirely. Requires a window reload to take effect."
         },
         "opencodego.stripThinkTags": {
           "type": "string",
@@ -231,6 +231,16 @@
             }
           }
         }
+      },
+      {
+        "vendor": "opencodego-agent-host",
+        "displayName": "OpenCode Go (Agents)",
+        "when": "config.opencodego.agentsWindow"
+      },
+      {
+        "vendor": "opencodezen-agent-host",
+        "displayName": "OpenCode Zen (Agents)",
+        "when": "config.opencodego.agentsWindow"
       }
     ]
   },
