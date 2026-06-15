@@ -161,6 +161,7 @@ const MODEL_LIMITS_BY_PROVIDER: Record<ProviderVendor, Record<string, BaseModelL
     "mimo-v2.5-pro": { contextWindow: 1048576, maxOutputTokens: 128000 },
     "mimo-v2-omni": { contextWindow: 262144, maxOutputTokens: 128000 },
     "mimo-v2-pro": { contextWindow: 1048576, maxOutputTokens: 128000 },
+    "kimi-k2.7-code": { contextWindow: 256000, maxOutputTokens: 262144 },
     "kimi-k2.6": { contextWindow: 262144, maxOutputTokens: 65536 },
     "kimi-k2.5": { contextWindow: 262144, maxOutputTokens: 65536 },
     "glm-5.1": { contextWindow: 202752, maxOutputTokens: 32768 },
@@ -223,10 +224,22 @@ const MODEL_LIMITS_BY_PROVIDER: Record<ProviderVendor, Record<string, BaseModelL
   },
 };
 
+/**
+ * Models where the `temperature` request parameter is unsupported / deprecated.
+ * The upstream API rejects any non-default temperature with HTTP 400 for these.
+ * Mirrors the models.dev `temperature: false` flag so the extension still
+ * omits temperature even when the live metadata fetch fails.
+ */
+const MODELS_WITHOUT_TEMPERATURE = new Set([
+  // Kimi K2.7-code: Moonshot API returns "invalid temperature: only 1 is allowed"
+  "kimi-k2.7-code",
+]);
+
 const VISION_CAPABLE_MODELS = new Set([
   "minimax-m2.7",
   "minimax-m2.5",
   "minimax-m2.5-free",
+  "kimi-k2.7-code",
   "kimi-k2.6",
   "kimi-k2.5",
   "glm-5.1",
@@ -313,6 +326,10 @@ export function fallbackModelMetadata(
     maxOutputTokens: limits?.maxOutputTokens,
     supportsVision: supportsVision || undefined,
     reasoning: supportsReasoning(modelId) || undefined,
+    // Propagate temperature:false for models whose upstream API rejects the
+    // parameter. Without this, the request body would still include
+    // `temperature` when models.dev live fetch is unavailable.
+    temperature: MODELS_WITHOUT_TEMPERATURE.has(modelId) ? false : undefined,
     status,
   };
 }

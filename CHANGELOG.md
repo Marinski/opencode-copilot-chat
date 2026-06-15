@@ -6,6 +6,7 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ### Fixed
 
+- **`[Thinking]` Kimi K2.7-code rejects `temperature` and `thinking.type: "disabled"` (dual 400 errors).** The newly released `kimi-k2.7-code` (Moonshot AI) introduced breaking changes from K2.6: (1) `thinking.type` only accepts `"enabled"` — passing `"disabled"` returns HTTP 400 (`invalid thinking: only type=enabled is allowed for this model`); (2) the `temperature` request parameter is rejected (only `1` is allowed). The extension sent both rejected values because the model was unregistered in the fallback metadata and the default thinking setting is `kimi: "off"`. Fix: register `kimi-k2.7-code` in `MODEL_LIMITS_BY_PROVIDER` (context 256000 / output 262144 per models.dev), add to `VISION_CAPABLE_MODELS`, introduce `MODELS_WITHOUT_TEMPERATURE` set that propagates `temperature: false` via `fallbackModelMetadata` so the request body omits the parameter, and special-case `/^kimi-k2\.7/i` in `buildThinkingPayload` to always emit `{ thinking: { type: "enabled", keep: "all" } }` (thinking cannot be disabled for this model). The Thinking picker shows a single "Always On (K2.7)" option with the Moonshot API constraint description. `kimi-k2.6` and `kimi-k2.5` remain unchanged (they accept `disabled`). Fixes [#25](https://github.com/ltmoerdani/opencode-copilot-chat/issues/25).
 - **`[Model Picker]` Agent models no longer duplicated in the Manage Language Models panel.** Replaced the double-registration approach (PR #39/#42) with separate vendor IDs (`opencodego-agent`, `opencodezen-agent`). Each vendor now shows only its own models — zero duplication in any picker or management UI. Agent models are hidden from the Manage panel by default (`showAgentModelsInManagePanel: false`) while still working in the Agents window.
 
 ### Added
@@ -23,7 +24,11 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 - `metadata.ts` `toEffectiveModelId()` vendor parameter widened to accept `AllProviderVendor`.
 - Replaces the `opencodego.showInAgentsWindow` setting from PR #42 with the cleaner two-setting approach (`agentsWindow` + `showAgentModelsInManagePanel`).
 
-Fixes [#41](https://github.com/ltmoerdani/opencode-copilot-chat/issues/41). Alternative to PR [#42](https://github.com/ltmoerdani/opencode-copilot-chat/pull/42) by [@Wallacy](https://github.com/Wallacy).
+### Changed
+
+- **Thinking helpers extracted to `src/thinking.ts` (pure module).** `thinkingFamily`, `buildFamilyThinkingSchema`, `applyRequestThinkingOverride`, `buildThinkingPayload`, and `buildQwenAnthropicThinkingPayload` moved out of `extension.ts` into a new pure module (`src/thinking.ts`) with zero `vscode` dependency. This enables unit testing without mocking the VS Code API surface. `extension.ts` now re-imports all five functions; all call sites unchanged — behavior identical. Unit tests added (`src/test/metadata.test.ts`, `src/test/thinking.test.ts` — 32 tests, all passing).
+
+Fixes [#25](https://github.com/ltmoerdani/opencode-copilot-chat/issues/25), [#41](https://github.com/ltmoerdani/opencode-copilot-chat/issues/41). Alternative to PR [#42](https://github.com/ltmoerdani/opencode-copilot-chat/pull/42) by [@Wallacy](https://github.com/Wallacy).
 
 ## [0.3.1] — 2026-06-15
 
