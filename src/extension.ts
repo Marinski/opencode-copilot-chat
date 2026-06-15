@@ -2713,6 +2713,27 @@ function buildFamilyThinkingSchema(
     };
   }
 
+  // Kimi K2.7-code: thinking cannot be disabled (Moonshot API constraint).
+  // Expose a single informational option so users understand the model always
+  // reasons, rather than hiding the picker or silently forcing "on".
+  if (/^kimi-k2\.7/i.test(modelId)) {
+    return {
+      properties: {
+        reasoningEffort: {
+          type: "string",
+          title: "Thinking Effort",
+          enum: ["on"],
+          enumItemLabels: ["Always On (K2.7)"],
+          enumDescriptions: [
+            "Kimi K2.7-code requires thinking enabled (Moonshot API constraint)"
+          ],
+          default: "on",
+          group: "navigation"
+        }
+      }
+    };
+  }
+
   if (family === "glm" || family === "kimi") {
     return {
       properties: {
@@ -2844,6 +2865,11 @@ function applyRequestThinkingOverride(
   if (family === "kimi" && typeof reasoningEffort === "string") {
     if (reasoningEffort === "on" || reasoningEffort === "off") next.kimi = reasoningEffort;
   }
+  // K2.7-code forces thinking on regardless of picker selection (defensive —
+  // the picker schema only exposes "on", but VS Code may cache a stale value).
+  if (family === "kimi" && /^kimi-k2\.7/i.test(modelId)) {
+    next.kimi = "on";
+  }
   if (family === "mimo") {
     if (typeof reasoningEffort === "string" && ["off", "low", "medium", "high"].includes(reasoningEffort)) {
       next.mimo = reasoningEffort as ThinkingSettings["mimo"];
@@ -2927,6 +2953,15 @@ function getSettings(): ApiSettings {
 // model family expects. Returns an object to spread into the request body.
 // Anything returned here is merged into the OpenAI- or Anthropic-style payload.
 function buildThinkingPayload(modelId: string, thinking: ThinkingSettings, hasImageInput = false): Record<string, unknown> {
+  // Kimi K2.7-code breaking change: thinking.type only accepts "enabled" —
+  // passing "disabled" returns HTTP 400 ("invalid thinking: only type=enabled
+  // is allowed for this model"). Thinking is always on for this model.
+  // keep:"all" preserves reasoning_content across multi-turn conversations
+  // per the Moonshot API spec (default is { type: "enabled", keep: "all" }).
+  if (/^kimi-k2\.7/i.test(modelId)) {
+    return { thinking: { type: "enabled", keep: "all" } };
+  }
+
   if (/^deepseek-/i.test(modelId)) {
     if (thinking.deepseek === "off") {
       return {};
