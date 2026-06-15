@@ -48,6 +48,19 @@ That's it! You can now test your changes in the Extension Development Host.
 
 ---
 
+## ⚠️ Automation Rules (AI Agents & Copilot)
+
+If you are an AI agent (GitHub Copilot, ChatGPT, etc.) working on this repo:
+
+1. **NEVER push without explicit permission.** Always ask "Should I push?" before running `git push`.
+2. **NEVER create PRs or merge without asking.** Let the human decide when to push and create PRs.
+3. **Commit only when asked.** Don't auto-commit unless the user explicitly requests it.
+4. **Work on feature branches.** Never commit directly to `main` — always create a branch first.
+
+These rules exist to prevent accidental pushes to production branches.
+
+---
+
 ## 💬 Questions?
 
 [Start a discussion](https://github.com/ltmoerdani/opencode-copilot-chat/discussions) — no question is too small!
