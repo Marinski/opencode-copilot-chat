@@ -1,4 +1,4 @@
-**Status:** ✅ Solved
+**Status:** ✅ Solved · **Post-#42 update:** opt-in gating (see [Post-#42: Opt-in gating](#post-42-opt-in-gating))
 
 # Agents Window Model Visibility — OpenCode Models in Copilot CLI Picker
 
@@ -168,6 +168,53 @@ return models.flatMap((modelId) => {
 | 4 | 2026-06-14 | PR #39 opened by @Marinski — implemented Option A with `flatMap` + `targetChatSessionType: "copilotcli"` |
 | 5 | 2026-06-14 | Local verification: compile + VSIX install + Agents window test — all PASS |
 | 6 | 2026-06-14 | PR #39 merged (merge commit) to main |
+| 7 | 2026-06-15 | Issue #41 opened by @hu3bi — models shown twice in Language Models management UI (regression from #39) |
+| 8 | 2026-06-15 | PR #42 opened by @Marinski — gated `::agent-host` duplicate behind `opencodego.showInAgentsWindow` (default `false`) |
+
+---
+
+## Post-#42: Opt-in gating (2026-06-15)
+
+PR [#39](https://github.com/ltmoerdani/opencode-copilot-chat/pull/39) assumed `filterModelsForSession()` would hide the `::agent-host` duplicate from every surface. That assumption held for the **Chat view dropdown** and the **Agents window picker**, but **not** for the **Language Models management UI** (the BYOK enable/disable list) — that surface enumerates the raw registration list with no session filter, so both variants appeared there with a `::agent-host` suffix (issue [#41](https://github.com/ltmoerdani/opencode-copilot-chat/issues/41), regression in v0.3.0).
+
+PR [#42](https://github.com/ltmoerdani/opencode-copilot-chat/pull/42) by [@Marinski](https://github.com/Marinski) gates the duplicate behind a new opt-in setting:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `opencodego.showInAgentsWindow` | `false` | When `false`, only the general variant is registered → each model appears exactly once in **every** surface (pre-#39 behaviour restored). When `true`, the `::agent-host` variant is also registered, with an `(Agents)` name suffix so the two entries stay distinguishable in the management UI. |
+
+### Why an opt-in setting over a separate provider?
+
+Issue #41 also discussed an alternative approach ([@Wallacy](https://github.com/Wallacy)'s `fix/separate-agent-providers` branch): publish the agents-window models as a separate provider so users can hide/show them via the vendor toggle. That is conceptually cleaner but more invasive (new provider definition, separate settings display, separate metadata path). The opt-in setting was chosen for the hotfix because it is minimal-risk, restores the pre-#39 default, and keeps the Agents-window feature available for users who want it.
+
+### Updated behaviour matrix
+
+| `opencodego.showInAgentsWindow` | Chat view dropdown | Agents window picker | Language Models management UI |
+|---|---|---|---|
+| `false` (default) | 1 entry per model | ❌ no OpenCode models | 1 entry per model |
+| `true` | 1 entry per model | ✅ OpenCode models visible | 2 entries: `Model` + `Model (Agents)` |
+
+Both states still require `"extensions.supportAgentsWindow": { "ltmoerdani.opencode-copilot-chat": true }` for the extension to load in the Agents window process at all.
+
+### Migration note for v0.3.0 users
+
+Users who relied on OpenCode models in the Agents window in v0.3.0 must now **also** set `"opencodego.showInAgentsWindow": true` after upgrading, or the models will disappear from the Agents window picker. The Chat view and management UI are unaffected (they were the surfaces showing the unwanted duplicate).
+
+### Implementation notes
+
+- The setting is read in `provideLanguageModelChatInformation()` via `vscode.workspace.getConfiguration("opencodego").get("showInAgentsWindow", false)`.
+- When `false`, the `flatMap` returns `[info]` only — no `agentHostInfo` is constructed.
+- When `true`, `agentHostInfo` gets `name: \`${sharedFields.name} (Agents)\`` so the two entries are visually distinguishable. The `id` still carries the `::agent-host` suffix, which `resolveRawModelId()` strips, so routing / API key lookup / metadata resolution are unchanged.
+- `this.apiKeysByModelId.set(agentHostModelId, apiKey)` still runs in both states — safe (no dangling key lookup if the user toggles the setting without a reload).
+- The `Model registered:` log line was moved before the early return so the output channel stays clean when opt-in is off.
+- The Known Minor Issue from PR #39 (cosmetic duplicate in `showDiagnostics()`) is auto-resolved when the setting is off, because only one variant is registered.
+
+### Files changed (PR #42)
+
+| File | Change |
+|------|--------|
+| `src/extension.ts` | Read `opencodego.showInAgentsWindow`; return `[info]` by default, `[info, agentHostInfo]` when opted in; add `(Agents)` name suffix to the agent-host variant; move log line before the early return. |
+| `package.json` | Add `opencodego.showInAgentsWindow` boolean setting (default `false`) with `markdownDescription`. |
 
 ---
 

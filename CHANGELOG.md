@@ -1,7 +1,23 @@
 # Changelog
 
 All notable changes to the **OpenCode Go BYOK Provider** extension are documented here.
+## [Unreleased]
 
+### Fixed
+
+- **`[Model Picker]` Models no longer shown twice in the Language Models management UI.** PR #39 registered each model twice (a general variant + a `::agent-host` variant with `targetChatSessionType: "copilotcli"`) so OpenCode models could appear in the Agents window picker. `filterModelsForSession()` hid the duplicate from the Chat view dropdown and Agents window picker, but the Language Models management UI (BYOK enable/disable list) enumerates the raw registration list with no session filter — so both variants appeared there with a `::agent-host` suffix (issue #41, regression from #39 in v0.3.0).
+
+### Added
+
+- **`opencodego.showInAgentsWindow`** boolean setting (default `false`). Gates the `::agent-host` duplicate behind an explicit opt-in. **Disabled by default** so each model appears exactly once everywhere (pre-#39 behaviour restored). When enabled, an `(Agents)` suffix is added to the duplicate entry's name so the two are visually distinguishable in the Language Models management UI.
+
+### Changed
+
+- **Agents window support is now opt-in.** Users upgrading from v0.3.0 who relied on OpenCode models in the Agents window must now **also** set `"opencodego.showInAgentsWindow": true` (in addition to `extensions.supportAgentsWindow`) to restore model visibility there.
+
+Fixes [#41](https://github.com/ltmoerdani/opencode-copilot-chat/issues/41). PR [#42](https://github.com/ltmoerdani/opencode-copilot-chat/pull/42) by [@Marinski](https://github.com/Marinski).
+
+---
 ## [0.3.0] — 2026-06-14
 
 ### Added
