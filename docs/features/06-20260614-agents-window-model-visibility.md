@@ -1,12 +1,15 @@
-**Status:** ✅ Solved · **Post-#42 update:** opt-in gating (see [Post-#42: Opt-in gating](#post-42-opt-in-gating))
+**Status:** ✅ Solved
 
 # Agents Window Model Visibility — OpenCode Models in Copilot CLI Picker
 
 **Topic:** models / vscode / agents-window
-**Updated:** 2026-06-14
+**Updated:** 2026-06-15
 **Tags:** #models #vscode #agents-window #targetChatSessionType #marketplace #copilotcli
 **GitHub Issue:** [ltmoerdani/opencode-copilot-chat#11](https://github.com/ltmoerdani/opencode-copilot-chat/issues/11)
-**GitHub PR:** [#39](https://github.com/ltmoerdani/opencode-copilot-chat/pull/39) (by [@Marinski](https://github.com/Marinski))
+**GitHub Issue:** [ltmoerdani/opencode-copilot-chat#41](https://github.com/ltmoerdani/opencode-copilot-chat/issues/41) (duplication regression)
+**GitHub PR:** [#39](https://github.com/ltmoerdani/opencode-copilot-chat/pull/39) (by [@Marinski](https://github.com/Marinski)) — initial implementation
+**GitHub PR:** [#42](https://github.com/ltmoerdani/opencode-copilot-chat/pull/42) (by [@Marinski](https://github.com/Marinski)) — opt-in gate fix
+**GitHub PR:** Alternative by [@Wallacy](https://github.com/Wallacy) — separate vendor approach (this document)
 **Related Research:** [`docs/references/01-20260611-agents-window-model-visibility.md`](../references/01-20260611-agents-window-model-visibility.md)
 
 ---
@@ -15,7 +18,11 @@
 
 OpenCode Go and OpenCode Zen models now appear in the VS Code **Agents window** model picker when starting a Copilot CLI / Background agent session. Previously they were only visible in the regular Chat view.
 
-GitHub Issue #11 requested this feature. The full research investigation (3 options evaluated, VS Code source code analysis) is documented in [`docs/references/01-20260611-agents-window-model-visibility.md`](../references/01-20260611-agents-window-model-visibility.md). This document covers the implementation shipped in PR #39.
+GitHub Issue #11 requested this feature. The full research investigation (3 options evaluated, VS Code source code analysis) is documented in [`docs/references/01-20260611-agents-window-model-visibility.md`](../references/01-20260611-agents-window-model-visibility.md).
+
+This document covers two implementation approaches:
+1. **PR #39** (original) — double registration with `::agent-host` suffix under the same vendor
+2. **Alternative** — separate vendor IDs for agent models (cleaner Manage panel UX)
 
 ---
 
@@ -30,48 +37,62 @@ VS Code has two chat surfaces with **separate** model pickers:
 
 Models registered via `vscode.lm.registerLanguageModelChatProvider()` without `targetChatSessionType` were completely absent from the Agents window. The root cause: VS Code's `filterModelsForSession()` excludes models without a matching `targetChatSessionType` whenever **any** model targets that session type (Copilot's built-in models do).
 
+### The Duplication Bug (Issue #41)
+
+PR #39's approach registered each model **twice** under the same vendor. While `filterModelsForSession()` correctly partitions them in the Chat view and Agents window pickers, the **Language Models management UI** (BYOK enable/disable list) enumerates the raw registration list with no session filter — so both variants appeared there, showing every model twice with a `::agent-host` suffix.
+
 ---
 
-## Solution
+## Approach 1: Double Registration (PR #39 / #42)
 
-Register each model **twice** from `provideLanguageModelChatInformation()` in `src/extension.ts`, using `flatMap` instead of `map`:
+Register each model **twice** from `provideLanguageModelChatInformation()`, using `flatMap`:
 
 | Variant | `id` | `targetChatSessionType` | Visible in |
 |---------|------|--------------------------|------------|
 | General | `opencodego:deepseek-v4-flash` | _(none)_ | Chat view |
 | Agents-window | `opencodego:deepseek-v4-flash::agent-host` | `"copilotcli"` | Agents window > Copilot CLI session |
 
-### Why No Picker Duplication
+**Fix for #41 (PR #42):** Gated the `::agent-host` duplicate behind `opencodego.showInAgentsWindow` (default `false`). When enabled, the duplicate gets an `(Agents)` name suffix.
 
-VS Code's `filterModelsForSession()` partitions the two variants — each surface sees only the entries meant for it:
+**Trade-off:** Users must explicitly enable the setting, and when enabled, the Manage panel still shows both variants.
 
-| Surface | Filter applied | What it sees |
-|----------|----------------|--------------|
-| **Chat view** | Models with NO `targetChatSessionType` | Only the general variant |
-| **Agents window** | Models with `targetChatSessionType === "copilotcli"` | Only the agents-window variant |
+---
 
-This is confirmed by [microsoft/vscode#298862](https://github.com/microsoft/vscode/pull/298862), which makes `getDefaultLanguageModel()` also exclude session-targeted models. Neither picker shows both variants.
+## Approach 2: Separate Vendor IDs (Alternative)
 
-### Why Routing is Unchanged
+Register agent models under **dedicated vendor IDs** (`opencodego-agent`, `opencodezen-agent`) so each vendor group shows only its variant in the Manage panel.
 
-The `::agent-host` suffix in the agents-window model ID is stripped by the existing `resolveRawModelId()` helper:
+| Vendor | Models | Visible in |
+|--------|--------|------------|
+| `opencodego` | General models | Chat view, Manage panel |
+| `opencodego-agent` | Agent-only models (`targetChatSessionType: "copilotcli"`) | Agents window, Manage panel (hidden by default) |
+| `opencodezen` | General models | Chat view, Manage panel |
+| `opencodezen-agent` | Agent-only models (`targetChatSessionType: "copilotcli"`) | Agents window, Manage panel (hidden by default) |
 
-```typescript
-function resolveRawModelId(modelId: string): string {
-  const [base] = modelId.split("::");  // strips "::agent-host"
-  // ... then strips vendor prefix
-}
-```
+### Why This Is Cleaner
 
-All backend routing, API key lookup, and metadata resolution continue to use the real model ID. The API key map is also seeded with the `::agent-host` variant:
+- **No duplication anywhere** — each vendor shows exactly its models
+- **Manage panel is clean** — agent vendors are hidden by default via `when` clause (`opencodego.showAgentModelsInManagePanel`, default `false`)
+- **Agent models still work** — `agentsWindow` (default `true`) registers the providers at runtime
+- **Independent controls** — `agentsWindow` controls registration, `showAgentModelsInManagePanel` controls Manage panel visibility
 
-```typescript
-this.apiKeysByModelId.set(modelId, apiKey);
-this.apiKeysByModelId.set(effectiveModelId, apiKey);
-this.apiKeysByModelId.set(agentHostModelId, apiKey);  // ← added
-```
+### Configuration
 
-### `targetChatSessionType` Value
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `opencodego.agentsWindow` | `true` | Register agent providers at runtime |
+| `opencodego.showAgentModelsInManagePanel` | `false` | Show agent vendors in Manage panel |
+
+### Key Implementation Details
+
+- `resolveBaseVendor()` in `providerTypes.ts` maps agent vendors back to base for routing/metadata
+- `providerVariant()` helper creates agent definitions from base (DRY)
+- BYOK key sync: main provider stores key via `context.secrets.store()`, then calls `agentProvider.triggerChange()`
+- Agent variant reads key from `context.secrets.get(SECRET_KEY)`
+
+---
+
+## `targetChatSessionType` Value
 
 The correct value is `"copilotcli"` — the `type` field from the Copilot extension's `chatSessions` contribution in its `package.json`:
 
@@ -97,17 +118,17 @@ Without this setting, the extension will not load in the Agents window process a
 
 ---
 
-## Files Changed
+## Files Changed (Approach 2)
 
 | File | Change |
 |------|--------|
-| `src/extension.ts` | `provideLanguageModelChatInformation()` changed from `map` to `flatMap`; returns `[generalVariant, agentsWindowVariant]` per model. Added `agentHostModelId` to `apiKeysByModelId` map. |
+| `package.json` | Added `agentsWindow` and `showAgentModelsInManagePanel` configs; declared agent vendors with `when` clause |
+| `src/extension.ts` | DRY provider definitions via `providerVariant()`; agent registration; BYOK key sync; `baseVendor` getter |
+| `src/providerTypes.ts` | Agent vendor constants, `AllProviderVendor` type, `resolveBaseVendor()` helper |
+| `src/routing.ts` | Uses `resolveBaseVendor()` before vendor comparisons |
+| `src/metadata.ts` | Widened `toEffectiveModelId` vendor parameter |
 
-No `package.json` changes. No `enabledApiProposals` needed — `targetChatSessionType` is **stable API** (not proposed), so this is fully marketplace-compatible.
-
----
-
-## Implementation Detail
+No `enabledApiProposals` needed — `targetChatSessionType` is **stable API**.
 
 ```typescript
 return models.flatMap((modelId) => {
@@ -168,53 +189,6 @@ return models.flatMap((modelId) => {
 | 4 | 2026-06-14 | PR #39 opened by @Marinski — implemented Option A with `flatMap` + `targetChatSessionType: "copilotcli"` |
 | 5 | 2026-06-14 | Local verification: compile + VSIX install + Agents window test — all PASS |
 | 6 | 2026-06-14 | PR #39 merged (merge commit) to main |
-| 7 | 2026-06-15 | Issue #41 opened by @hu3bi — models shown twice in Language Models management UI (regression from #39) |
-| 8 | 2026-06-15 | PR #42 opened by @Marinski — gated `::agent-host` duplicate behind `opencodego.showInAgentsWindow` (default `false`) |
-
----
-
-## Post-#42: Opt-in gating (2026-06-15)
-
-PR [#39](https://github.com/ltmoerdani/opencode-copilot-chat/pull/39) assumed `filterModelsForSession()` would hide the `::agent-host` duplicate from every surface. That assumption held for the **Chat view dropdown** and the **Agents window picker**, but **not** for the **Language Models management UI** (the BYOK enable/disable list) — that surface enumerates the raw registration list with no session filter, so both variants appeared there with a `::agent-host` suffix (issue [#41](https://github.com/ltmoerdani/opencode-copilot-chat/issues/41), regression in v0.3.0).
-
-PR [#42](https://github.com/ltmoerdani/opencode-copilot-chat/pull/42) by [@Marinski](https://github.com/Marinski) gates the duplicate behind a new opt-in setting:
-
-| Setting | Default | Effect |
-|---|---|---|
-| `opencodego.showInAgentsWindow` | `false` | When `false`, only the general variant is registered → each model appears exactly once in **every** surface (pre-#39 behaviour restored). When `true`, the `::agent-host` variant is also registered, with an `(Agents)` name suffix so the two entries stay distinguishable in the management UI. |
-
-### Why an opt-in setting over a separate provider?
-
-Issue #41 also discussed an alternative approach ([@Wallacy](https://github.com/Wallacy)'s `fix/separate-agent-providers` branch): publish the agents-window models as a separate provider so users can hide/show them via the vendor toggle. That is conceptually cleaner but more invasive (new provider definition, separate settings display, separate metadata path). The opt-in setting was chosen for the hotfix because it is minimal-risk, restores the pre-#39 default, and keeps the Agents-window feature available for users who want it.
-
-### Updated behaviour matrix
-
-| `opencodego.showInAgentsWindow` | Chat view dropdown | Agents window picker | Language Models management UI |
-|---|---|---|---|
-| `false` (default) | 1 entry per model | ❌ no OpenCode models | 1 entry per model |
-| `true` | 1 entry per model | ✅ OpenCode models visible | 2 entries: `Model` + `Model (Agents)` |
-
-Both states still require `"extensions.supportAgentsWindow": { "ltmoerdani.opencode-copilot-chat": true }` for the extension to load in the Agents window process at all.
-
-### Migration note for v0.3.0 users
-
-Users who relied on OpenCode models in the Agents window in v0.3.0 must now **also** set `"opencodego.showInAgentsWindow": true` after upgrading, or the models will disappear from the Agents window picker. The Chat view and management UI are unaffected (they were the surfaces showing the unwanted duplicate).
-
-### Implementation notes
-
-- The setting is read in `provideLanguageModelChatInformation()` via `vscode.workspace.getConfiguration("opencodego").get("showInAgentsWindow", false)`.
-- When `false`, the `flatMap` returns `[info]` only — no `agentHostInfo` is constructed.
-- When `true`, `agentHostInfo` gets `name: \`${sharedFields.name} (Agents)\`` so the two entries are visually distinguishable. The `id` still carries the `::agent-host` suffix, which `resolveRawModelId()` strips, so routing / API key lookup / metadata resolution are unchanged.
-- `this.apiKeysByModelId.set(agentHostModelId, apiKey)` still runs in both states — safe (no dangling key lookup if the user toggles the setting without a reload).
-- The `Model registered:` log line was moved before the early return so the output channel stays clean when opt-in is off.
-- The Known Minor Issue from PR #39 (cosmetic duplicate in `showDiagnostics()`) is auto-resolved when the setting is off, because only one variant is registered.
-
-### Files changed (PR #42)
-
-| File | Change |
-|------|--------|
-| `src/extension.ts` | Read `opencodego.showInAgentsWindow`; return `[info]` by default, `[info, agentHostInfo]` when opted in; add `(Agents)` name suffix to the agent-host variant; move log line before the early return. |
-| `package.json` | Add `opencodego.showInAgentsWindow` boolean setting (default `false`) with `markdownDescription`. |
 
 ---
 
