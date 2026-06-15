@@ -2,9 +2,9 @@
 
 # 🚀 OpenCode for GitHub Copilot Chat
 
-### Use **30+ frontier AI models** (DeepSeek V4, Kimi K2.6, GLM-5.1, GPT-5.5, Claude Opus 4.7, Gemini 3.5, Grok…) in GitHub Copilot Chat — **free via BYOK**
+### Use **30+ frontier AI models** (DeepSeek V4, Kimi K2.6, GLM-5.1, GPT-5.5, Claude Opus 4.7, Gemini 3.5, Grok…) in GitHub Copilot Chat — **BYOK**
 
-**Bring Your Own Key (BYOK)** · OpenCode Zen (free) or Go (pay-per-use) · Works with native Copilot Agent Mode
+**Bring Your Own Key (BYOK)** · OpenCode Zen (free + paid models) or Go ($10/mo subscription) · Works with native Copilot Agent Mode
 
 [![CI](https://github.com/ltmoerdani/opencode-copilot-chat/actions/workflows/ci.yml/badge.svg)](https://github.com/ltmoerdani/opencode-copilot-chat/actions/workflows/ci.yml)
 [![VS Code Marketplace](https://img.shields.io/badge/Install-VS%20Code%20Marketplace-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=ltmoerdani.opencode-copilot-chat)
@@ -23,7 +23,7 @@
 > ### 💡 The elevator pitch
 >
 > **Copilot Chat is great — but its premium models cost $39/mo (Pro+), and the free tier is rate-limited.**
-> This extension plugs **OpenCode's model gateway** into Copilot Chat's model picker. Use **OpenCode Zen** for **free** Claude Opus, GPT-5.5, Gemini, Grok, DeepSeek — or top up **OpenCode Go** (pay-per-use, no subscription) for premium models like DeepSeek V4 Pro, Kimi K2.6, GLM-5.1, Qwen3.7 Max, MiMo V2.5 Pro. You keep the native Copilot UI, tool-calling, and Agent Mode — you just get **way more models**, often **free or cheaper**.
+> This extension plugs **OpenCode's model gateway** into Copilot Chat's model picker. **OpenCode Zen** gives you 2-5 rotating free models (Big Pickle is always free; DeepSeek V4 Flash, MiMo-V2.5, and others rotate) plus paid models like Claude Opus, GPT-5.5, and Gemini at pay-as-you-go rates. **OpenCode Go** ($10/mo, $5 first month promo) gives you a curated set of open models (DeepSeek V4 Pro, Kimi K2.6, GLM-5.1, Qwen3.7 Max, MiMo V2.5 Pro) with generous usage limits. You keep the native Copilot UI, tool-calling, and Agent Mode — you just get **way more models**, often **cheaper than Copilot Pro+**.
 
 ---
 
@@ -31,12 +31,12 @@
 
 | | What you get |
 |---|---|
-| 💸 **Cheaper than Copilot Pro+** | Copilot Free + OpenCode **Zen free** models = **$0** for Claude Opus, GPT-5.5, Gemini 3.5, Grok, DeepSeek. Need premium? OpenCode **Go** is pay-per-use (top-up), no $39/mo subscription |
+| 💸 **Cheaper than Copilot Pro+** | Copilot Free + OpenCode **Zen free** models = **$0** for 2-5 rotating models (Big Pickle always free; DeepSeek V4 Flash, MiMo-V2.5, and others rotate). Paid Zen models (Claude Opus, GPT-5.5) available at pay-as-you-go rates. Go subscription **$10/mo** ($5 first month) |
 | 🌍 **30+ frontier models** | DeepSeek V4, Kimi K2.6, GLM-5.1, Qwen3.7 Max, MiMo V2.5, MiniMax M2.7, Big Pickle, Nemotron — **all in one picker** |
 | 🤖 **Full Agent Mode** | Tool-calling (read files, edit, run terminal) works natively — not just chat. Models also appear in the **Agents window** (Copilot CLI session) |
 | 🧠 **Thinking controls** | Per-model reasoning effort (DeepSeek `max`, Qwen `thinking_budget`, MiniMax `on/off`, Mimo `low/med/high`) |
 | 📊 **Live usage tracking** | Status bar shows Go subscription burn-rate across 5h / weekly / monthly tiers |
-| 🔌 **Dual providers** | OpenCode **Go** (paid, pay-per-use) + OpenCode **Zen** (free) — run both at once, switch instantly |
+| 🔌 **Dual providers** | OpenCode **Go** ($10/mo subscription) + OpenCode **Zen** (free + paid models) — run both at once, switch instantly |
 | 🎯 **Smart routing** | Each model family auto-routes to its native transport (`/responses`, `/messages`, `streamGenerateContent`, `/chat/completions`) |
 | 🖼️ **Vision + PDF + Audio** | Multimodal models pass through image, PDF, audio, and video inputs |
 | 🔒 **Your key, your control** | API key stored in VS Code SecretStorage — never leaves your machine |
@@ -48,9 +48,9 @@
 ```text
 1.  Install GitHub Copilot Chat (free) ──────────────────────────── ✓
 2.  Install this extension ──────────────────────────────────────── ✓
-3.  Get a free OpenCode Zen API key → opencode.ai ───────────────── ✓
+3.  Get an OpenCode Zen API key → opencode.ai/auth ─────────────── ✓
 4.  Open Copilot Chat → click model → "Add Models" → OpenCode Zen ── ✓
-5.  Paste API key → pick a model → CHAT 🎉
+5.  Paste API key → pick a free model → CHAT 🎉
 ```
 
 <details>
@@ -59,8 +59,9 @@
 1. **Install [GitHub Copilot Chat](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat)** — free, requires only a GitHub account.
 2. **Install this extension** from the VS Code Marketplace (or press `F5` in this repo for dev mode).
 3. **Get an API key:**
-   - **Free:** Sign up at [opencode.ai](https://opencode.ai) → grab an **OpenCode Zen** key (free tier includes Claude, GPT, Gemini, Grok, DeepSeek).
-   - **Paid (optional):** Top up for **OpenCode Go** to unlock DeepSeek V4 Pro, Kimi K2.6, GLM-5.1, Qwen3.7 Max, MiMo V2.5 Pro, MiniMax M2.7.
+   - **Free models:** Sign up at [opencode.ai](https://opencode.ai) → grab an **OpenCode Zen** key. 2-5 models are truly free (Big Pickle is always free; DeepSeek V4 Flash Free, MiMo-V2.5 Free, and others rotate).
+   - **Paid Zen models (optional):** Add a payment method to your Zen account to unlock Claude Opus, GPT-5.5, Gemini, and other paid models at pay-as-you-go rates. Adding $20+ balance also improves rate limits on free models.
+   - **OpenCode Go (optional):** Subscribe to **OpenCode Go** ($10/mo, $5 first month promo) for curated open models like DeepSeek V4 Pro, Kimi K2.6, GLM-5.1, Qwen3.7 Max, MiMo V2.5 Pro.
 4. **Open Copilot Chat** (Cmd/Ctrl+Shift+I, or click the Copilot icon).
 5. **Click the model picker** (current model name) → **Add Models…**
 6. **Select** **OpenCode Go** or **OpenCode Zen**.
@@ -94,10 +95,10 @@ The extension fetches **live model lists** on every startup from:
 
 | Provider | Endpoint | Cost |
 |---|---|---|
-| **OpenCode Go** | `https://opencode.ai/zen/go/v1/models` | Paid (top-up) |
-| **OpenCode Zen** | `https://opencode.ai/zen/v1/models` | Free by default, paid optional |
+| **OpenCode Go** | `https://opencode.ai/zen/go/v1/models` | $10/mo ($5 first month promo) — usage limits: 5h/$12, weekly/$30, monthly/$60 |
+| **OpenCode Zen** | `https://opencode.ai/zen/v1/models` | 2-5 rotating free models + pay-as-you-go for premium models |
 
-### ⭐ OpenCode Go (paid — top-up)
+### ⭐ OpenCode Go (subscription — $10/mo, $5 first month promo)
 
 | Model | Context | Max Output | Highlights |
 |---|---:|---:|---|
@@ -113,29 +114,42 @@ The extension fetches **live model lists** on every startup from:
 | `hy3-preview` | 256,000 | 64,000 | Preview |
 | `ring-2.6-1t` | 262,000 | 66,000 | Large context |
 
-### 🆓 OpenCode Zen (free models — no payment needed)
+### 🆓 OpenCode Zen — Free models (no payment needed)
+
+OpenCode Zen offers **2-5 rotating free models** — no balance required. **Big Pickle is always free**; other models rotate (DeepSeek V4 Flash Free, MiMo-V2.5 Free, Nemotron, etc.). Without a balance, rate limits are low. Adding $20+ to your Zen balance significantly improves rate limits on free models.
+
+> **Note:** Free models rotate periodically. The table below shows current offerings, but availability may change. Big Pickle is the only model guaranteed to always be free.
 
 | Model | Context | Max Output | Vendor |
 |---|---:|---:|---|
-| `claude-opus-4-7` / `claude-opus-4-6` | **1,000,000** | 128,000 | Anthropic |
-| `claude-opus-4-5` / `claude-opus-4-1` | 200,000 | 32,000-64,000 | Anthropic |
-| `claude-sonnet-4-6` / `claude-sonnet-4-5` / `claude-sonnet-4` | **1,000,000** | 64,000 | Anthropic |
-| `claude-haiku-4-5` | 200,000 | 64,000 | Anthropic |
-| `gpt-5.5` / `gpt-5.5-pro` | **1,050,000** | 128,000 | OpenAI |
-| `gpt-5.4` / `gpt-5.4-pro` / `gpt-5.4-mini` | 400,000–1,050,000 | 128,000 | OpenAI |
-| `gpt-5.3-codex` / `gpt-5.2` / `gpt-5.2-codex` | 400,000 | 128,000 | OpenAI |
-| `gpt-5.1` / `gpt-5.1-codex` / `gpt-5.1-codex-max` / `gpt-5.1-codex-mini` | 400,000 | 128,000 | OpenAI |
-| `gpt-5` / `gpt-5-codex` / `gpt-5-nano` | 400,000 | 128,000 | OpenAI |
-| `gemini-3.5-flash` / `gemini-3.1-pro` / `gemini-3-flash` | **1,048,576** | 65,536 | Google |
-| `grok-build-0.1` | 256,000 | 256,000 | xAI |
+| `big-pickle` | 200,000 | 128,000 | 🥒 Mystery box (always free) |
 | `deepseek-v4-flash-free` | 200,000 | 128,000 | DeepSeek |
-| `qwen3.6-plus-free` | 262,144 | 65,536 | Alibaba |
-| `minimax-m2.5-free` | 204,800 | 131,072 | MiniMax |
-| `trinity-large-preview-free` | 131,072 | 131,072 | Trinity |
+| `mimo-v2.5-free` | 200,000 | 128,000 | Xiaomi |
 | `nemotron-3-super-free` | 204,800 | 128,000 | NVIDIA |
-| `big-pickle` | 200,000 | 128,000 | 🥒 Mystery box |
+| `north-mini-code-free` | 131,072 | 131,072 | Cohere |
 
-> Set `opencodego.freeOnly: false` to also reveal **paid Zen models** (Claude Opus paid tier, GPT-5.5 Pro, etc.)
+### 💰 OpenCode Zen — Paid models (requires balance)
+
+Add a payment method to your Zen account to unlock these models at pay-as-you-go rates.
+
+| Model | Context | Max Output | Input / Output per 1M tokens |
+|---|---:|---:|---|
+| `claude-opus-4-7` / `claude-opus-4-6` | **1,000,000** | 128,000 | $5 / $25 |
+| `claude-sonnet-4-6` / `claude-sonnet-4-5` | **1,000,000** | 64,000 | $3 / $15 |
+| `claude-haiku-4-5` | 200,000 | 64,000 | $1 / $5 |
+| `gpt-5.5` / `gpt-5.5-pro` | **1,050,000** | 128,000 | $5 / $30 |
+| `gpt-5.4` / `gpt-5.4-pro` / `gpt-5.4-mini` | 400,000–1,050,000 | 128,000 | $0.75–$30 / $4.50–$180 |
+| `gpt-5.3-codex` / `gpt-5.2` | 400,000 | 128,000 | $1.75 / $14 |
+| `gpt-5.1` / `gpt-5` / `gpt-5-nano` | 400,000 | 128,000 | $0.05–$1.07 / $0.40–$8.50 |
+| `gemini-3.5-flash` / `gemini-3.1-pro` / `gemini-3-flash` | **1,048,576** | 65,536 | $0.50–$4 / $3–$18 |
+| `grok-build-0.1` | 256,000 | 256,000 | $1 / $2 |
+| `qwen3.7-max` / `qwen3.6-plus` / `qwen3.5-plus` | 262,144–1,000,000 | 65,536 | $0.20–$7.50 |
+| `deepseek-v4-pro` / `deepseek-v4-flash` | **1,000,000** | 384,000 | $0.14–$3.48 |
+| `kimi-k2.6` / `kimi-k2.5` | 262,144 | 65,536 | $0.60–$4.00 |
+| `glm-5.1` / `glm-5` | 202,752 | 32,768 | $1.00–$4.40 |
+| `minimax-m2.7` / `minimax-m2.5` | 204,800 | 131,072 | $0.30 / $1.20 |
+
+> Set `opencodego.freeOnly: false` to show paid Zen models in the picker (default shows only free models).
 
 <details>
 <summary><b>🔬 How model metadata is resolved (3-tier fallback)</b></summary>
@@ -172,22 +186,22 @@ GitHub Copilot has four tiers now — **Free**, **Pro ($10/mo)**, **Pro+ ($39/mo
 
 | | **Copilot Free** | **Copilot Pro $10/mo** | **Copilot Pro+ $39/mo** | **OpenCode for Copilot Chat** |
 |---|---|---|---|---|
-| 💰 **Cost** | $0 | $10/mo | $39/mo | **$0** with free Zen models · Go is pay-per-use (top-up) |
-| 🤖 **Models** | GPT-5 mini, Haiku 4.5 (2,000 completions) | Pro catalog + Claude Code/Codex agents | Premium (Opus) | **30+ models**: DeepSeek V4, Kimi K2.6, GLM-5.1, Qwen3.7, MiMo V2.5, MiniMax M2.7, + free Claude/GPT/Gemini/Grok |
+| 💰 **Cost** | $0 | $10/mo | $39/mo | **$0** with free Zen models · Go is **$10/mo** subscription |
+| 🤖 **Models** | GPT-5 mini, Haiku 4.5 (2,000 completions) | Pro catalog + Claude Code/Codex agents | Premium (Opus) | **30+ models**: DeepSeek V4, Kimi K2.6, GLM-5.1, Qwen3.7, MiMo V2.5, MiniMax M2.7, + 2-5 rotating free models |
 | 🧠 **Reasoning controls** | — | Per-model (GitHub decides) | Per-model (GitHub decides) | **Per-family thinking effort** you control (DeepSeek `max`, Qwen `thinking_budget`, etc.) |
 | 🖼️ **Multimodal** | Limited | Yes (limited) | Yes (limited) | **Vision + PDF + Audio + Video** (per-model) |
 | 🔧 **Agent Mode / tool-calling** | — | ✅ | ✅ | ✅ **Full** (read, edit, terminal) |
 | 📊 **Usage transparency** | Opaque | Opaque | Audit logs | **Status bar burn-rate** + diagnostics report |
-| 🔌 **Provider** | GitHub only | GitHub only | GitHub only | **Bring any OpenCode key** — Go (paid) or Zen (free), run both at once |
-| 🎁 **Free Claude Opus / GPT-5.5?** | ❌ | ❌ | ❌ (paid tier only) | ✅ **Free** via Zen |
-| 🚫 **Rate limit** | 2,000 completions/mo | Unlimited (rate-limited) | 4× Pro credits | Per OpenCode tier (Zen free has limits; Go top-up removes them) |
+| 🔌 **Provider** | GitHub only | GitHub only | GitHub only | **Bring any OpenCode key** — Go ($10/mo subscription) or Zen (free + paid), run both at once |
+| 🎁 **Free frontier models?** | ❌ | ❌ | ❌ (paid tier only) | ✅ **2-5 rotating free models** via Zen (Big Pickle always free) |
+| 🚫 **Rate limit** | 2,000 completions/mo | Unlimited (rate-limited) | 4× Pro credits | Per OpenCode tier (Zen free has low limits without balance; Go has generous limits) |
 
 > **Not a replacement** — this extension *extends* Copilot Chat. You still need the (free) Copilot Chat extension + a GitHub account. BYOK models bypass the Copilot subscription billing entirely — you pay OpenCode directly (or nothing, on Zen free).
 
 ### 💡 When to use which?
 
 - **Copilot Free + OpenCode Zen** → **$0 total**. Best for students, hobbyists, and trying frontier models.
-- **Copilot Pro + OpenCode Go** → $10/mo for Copilot's polish + pay-per-use for DeepSeek Pro, Kimi K2.6, Qwen3.7 Max.
+- **Copilot Pro + OpenCode Go** → $10/mo for Copilot's polish + $10/mo for DeepSeek Pro, Kimi K2.6, Qwen3.7 Max.
 - **This extension alone** → Already works with just Copilot Free. Keep Copilot for autocomplete, use OpenCode models for chat/agent when you need variety or free tier.
 
 ---
@@ -309,7 +323,7 @@ The easiest way to manage your key is **Settings → Language Models** (gear ⚙
 | `OpenCode Go: Set API Key` | Store/update legacy OpenCode Go API key |
 | `OpenCode Go: Diagnostics` | Report of Go models + request history |
 | `OpenCode Zen: Diagnostics` | Report of Zen models + request history |
-| `OpenCode: Model Picker Diagnostics` | All models (Go + Zen + Copilot) side-by-side |
+| `OpenCode: Model Picker Diagnostics` | All registered models (Go + Zen + Copilot) side-by-side |
 | `OpenCode: Set Thinking Effort…` | Per-family thinking mode picker |
 | `OpenCode Go: Show Usage Details` | Detailed Go subscription usage breakdown |
 
@@ -329,9 +343,9 @@ If you already pay for Copilot Pro ($10), Pro+ ($39), or Max ($100), you can sti
 <details>
 <summary><b>Is it really free? What's the catch?</b></summary>
 
-**OpenCode Zen** offers **free models** including Claude Opus 4.7, GPT-5.5, Gemini 3.5, Grok, DeepSeek V4 Flash, Qwen3.6, MiniMax, and Big Pickle. Free-tier rate limits apply (set by OpenCode, not this extension).
+**OpenCode Zen** offers **2-5 rotating free models** — no balance required. **Big Pickle is always free**; other models rotate (DeepSeek V4 Flash Free, MiMo-V2.5 Free, Nemotron, etc.). Without a balance, rate limits are low. Adding $20+ to your Zen balance significantly improves rate limits on free models. Paid Zen models (Claude Opus, GPT-5.5, Gemini, etc.) require adding a payment method — they're pay-as-you-go.
 
-**OpenCode Go** is **pay-per-use** (top-up your balance, no monthly subscription). It unlocks premium models like DeepSeek V4 Pro, Kimi K2.6, GLM-5.1, Qwen3.7 Max, MiMo V2.5 Pro, MiniMax M2.7. You only pay for what you use, and the status bar shows your burn-rate across 5-hour / weekly / monthly windows.
+**OpenCode Go** is a **subscription** — **$10/mo** ($5 first month promo) — with generous usage limits (5h/$12, weekly/$30, monthly/$60). It unlocks curated open models like DeepSeek V4 Pro, Kimi K2.6, GLM-5.1, Qwen3.7 Max, MiMo V2.5 Pro. When you hit the limit, you can continue using the free Zen models.
 
 **This extension is free and open source** — you never pay us. You pay OpenCode directly (or nothing, on Zen free).
 
