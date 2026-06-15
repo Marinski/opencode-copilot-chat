@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to the **OpenCode Go BYOK Provider** extension are documented here.
-## [Unreleased]
+## [0.3.1] — 2026-06-15
 
 ### Fixed
 
