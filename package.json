@@ -143,7 +143,12 @@
         "opencodego.agentsWindow": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Register separate agent-host providers for the Copilot Agents window. Each agent vendor appears as its own group in the Manage Language Models panel, so models are never duplicated. Disable to hide the Agents section entirely. Requires a window reload to take effect."
+          "markdownDescription": "Register separate agent-host providers for the Copilot Agents window. Disable to hide the Agents section entirely. Requires a window reload to take effect."
+        },
+        "opencodego.showAgentModelsInManagePanel": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show agent-host vendors in the Manage Language Models panel. When disabled (default), agent models still work in the Agents window but are hidden from the Manage panel to reduce clutter."
         },
         "opencodego.stripThinkTags": {
           "type": "string",
@@ -235,12 +240,12 @@
       {
         "vendor": "opencodego-agent-host",
         "displayName": "OpenCode Go (Agents)",
-        "when": "config.opencodego.agentsWindow"
+        "when": "config.opencodego.showAgentModelsInManagePanel"
       },
       {
         "vendor": "opencodezen-agent-host",
         "displayName": "OpenCode Zen (Agents)",
-        "when": "config.opencodego.agentsWindow"
+        "when": "config.opencodego.showAgentModelsInManagePanel"
       }
     ]
   },
