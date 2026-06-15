@@ -1,5 +1,5 @@
 # 🧠 OPENCODE COPILOT CHAT DEVLOG
-**Branch:** `main` | **Updated:** 2026-06-14 Asia/Jakarta | **Current Phase:** v0.3.0 — Agents Window Visibility ✅
+**Branch:** `25-open-code-go-kimi-k27-issue` | **Updated:** 2026-06-15 Asia/Jakarta | **Current Phase:** v0.3.2 — Kimi K2.7-code Fix ✅
 
 ---
 
@@ -7,15 +7,70 @@
 
 | Field | Value |
 |-------|-------|
-| **Last Session** | 2026-06-14 |
-| **Worked On** | Reviewed, tested, and merged PR #39 (@Marinski) — Agents window (Copilot CLI) model visibility. Local verification: compile + VSIX install + Agents window test all PASS. Corrected a squash merge mistake (force-reset main, re-merged via PR #40 with proper merge commit preserving Marinski's authorship). Updated docs (feature doc 06, reference doc 01 status, CHANGELOG `[Unreleased]`). |
-| **Stopped At** | `main` at merge commit `9b2bf45`; compile clean (0 errors); docs written (feature 06, reference 01 updated, CHANGELOG `[Unreleased]`). |
-| **Next Action** | → Build VSIX and publish to VS Code Marketplace (version bump to 0.2.10 or 0.3.0). Optionally fix the cosmetic `showDiagnostics()` duplicate-model listing (filter out `::agent-host` variant). |
-| **Open Issues** | (1) Issue #23 — Go Usage tracker out of sync: awaiting user feedback on Options B+C (device-only label + configurable subscription start date). (2) Qwen image requests can still hit provider-side Alibaba quota. (3) `qwen3.6-plus-free` can loop tool calls instead of synthesizing final text during broad agent tasks. (4) Issue #11 now CLOSED — resolved by PR #39. |
+| **Last Session** | 2026-06-15 |
+| **Worked On** | Fixed issue #25 — Kimi K2.7-code dual 400 errors (temperature rejected + thinking.type "disabled" rejected). Registered model in metadata, added `MODELS_WITHOUT_TEMPERATURE` set, special-cased K2.7 in thinking payload/schema/override. Extracted pure thinking helpers to `src/thinking.ts` for unit testability. Wrote 32 unit tests (metadata + thinking), all passing. Manual test via Copilot Chat confirmed working. |
+| **Stopped At** | Branch `25-open-code-go-kimi-k27-issue`; compile clean (0 errors); 32/32 tests pass; docs written (issue 25, CHANGELOG [0.3.2], devlog). Ready for commit + manual test by user. |
+| **Next Action** | → Commit local, then user decides: push + open PR, or continue with other work. If release: bump version (already 0.3.2 in package.json), build VSIX, publish to Marketplace. |
+| **Open Issues** | (1) Issue #23 — Go Usage tracker out of sync: awaiting user feedback. (2) Qwen image requests can hit provider-side Alibaba quota. (3) `qwen3.6-plus-free` can loop tool calls during broad agent tasks. (4) Issue #25 — RESOLVED this session. |
 
 ---
 
-## ✅ Community Growth & PR Merges — Session 2026-06-14 🟢 DONE
+## ✅ Kimi K2.7-code Dual 400 Errors — Temperature + Thinking Fix — Session 2026-06-15 🟢 DONE
+
+**Action:** Fixed issue #25 — the newly released `kimi-k2.7-code` (Moonshot AI) returned two distinct HTTP 400 errors: (1) `invalid temperature: only 1 is allowed for this model`, and (2) `invalid thinking: only type=enabled is allowed for this model`. The extension sent both rejected values because the model was unregistered in the fallback metadata (`temperature: undefined` → temperature included in payload) and the default thinking setting is `kimi: "off"` (which produces `{ type: "disabled" }`, rejected by K2.7).
+
+**Root Cause:** K2.7-code is a breaking change from K2.6 — Moonshot API contract (verified via `platform.kimi.ai/docs/api/chat`):
+- `thinking.type` only accepts `"enabled"` (not `"disabled"`)
+- The `temperature` parameter is rejected (only `1` is allowed)
+- Default thinking is `{ type: "enabled", keep: "all" }`
+
+**Changes:**
+
+| # | Change | Files | Impact |
+|---|--------|-------|--------|
+| P0 | Register `kimi-k2.7-code` in `MODEL_LIMITS_BY_PROVIDER[GO_VENDOR]` | `src/metadata.ts` | Context 256000 / output 262144 (models.dev verified); fallback metadata now returns a record instead of `undefined` |
+| P0 | Add `MODELS_WITHOUT_TEMPERATURE` set + propagate in `fallbackModelMetadata` | `src/metadata.ts` | `temperature: false` returned for K2.7-code so `buildChatCompletionsRequestBody` omits the parameter; extensible for future models that lose temperature support |
+| P0 | Add `kimi-k2.7-code` to `VISION_CAPABLE_MODELS` | `src/metadata.ts` | Vision-capable per models.dev (`attachment: true`, modalities include image/video) |
+| P0 | Special-case `/^kimi-k2\.7/i` in `buildThinkingPayload` | `src/thinking.ts` | Always emits `{ thinking: { type: "enabled", keep: "all" } }` regardless of user setting; `keep:"all"` preserves reasoning_content across multi-turn conversations per Moonshot spec |
+| P1 | Special-case K2.7 in `buildFamilyThinkingSchema` | `src/thinking.ts` | Picker shows single "Always On (K2.7)" option with Moonshot API constraint description (not hidden, not silent force-on) |
+| P1 | Defensive force `kimi:"on"` in `applyRequestThinkingOverride` | `src/thinking.ts` | Guards against stale cached picker values |
+| R1 | Extract thinking helpers to `src/thinking.ts` (pure module) | `src/thinking.ts`, `src/extension.ts` | `thinkingFamily`, `buildFamilyThinkingSchema`, `applyRequestThinkingOverride`, `buildThinkingPayload`, `buildQwenAnthropicThinkingPayload` moved to zero-vscode-dependency module; enables unit testing; `extension.ts` re-imports all (-431 lines); all call sites unchanged |
+| T1 | Unit test suite | `src/test/metadata.test.ts`, `src/test/thinking.test.ts` | 32 tests covering K2.7 fix + regression safety for K2.6/K2.5 + all other families (deepseek/glm/qwen/mimo/minimax) |
+| T2 | Fix `package.json` test script | `package.json` | `node --test` → `node --test "out/test/**/*.test.js"` glob pattern |
+| D1 | Issue doc | `docs/issues/25-...` | Status → ✅ Solved; open questions resolved with models.dev evidence |
+| D2 | CHANGELOG entry | `CHANGELOG.md` | `[0.3.2]` — Fixed + Changed sections |
+| D3 | Devlog entry | `docs/devlog.md` | This entry |
+
+**Evidence — Official Moonshot API Contract:**
+
+> Controls thinking for the kimi-k2.7-code model... Default value is `{"type": "enabled", "keep": "all"}`.
+> Differences from kimi-k2.6: `type` only accepts `"enabled"`. Unlike kimi-k2.6, `"disabled"` is NOT supported — passing it returns an error. Thinking is always on for this model.
+> Source: `platform.kimi.ai/docs/api/chat`
+
+**Evidence — models.dev registry (verified 2026-06-15):**
+
+| Field | Value |
+|-------|-------|
+| context | 256000 |
+| output | 262144 |
+| temperature | `false` |
+| attachment | `true` (vision-capable) |
+| modalities.input | `["text","image","video"]` |
+
+**Verification:**
+
+```bash
+npm run compile    # 0 errors
+npm test           # 32 tests, 11 suites, 0 fail (69ms)
+```
+
+**Manual test:** User confirmed K2.7-code works via Copilot Chat (session 2026-06-15).
+
+**Result:** ✅ Both 400 errors resolved. `kimi-k2.6` and `kimi-k2.5` behavior unchanged (they accept `disabled`). All other families (deepseek/glm/qwen/mimo/minimax) verified via unit tests — no regression.
+
+---
+
+
 
 **Action:** Full community growth session — merged 3 community PRs, rewrote README, optimized repo discoverability, and engaged with community issues.
 
