@@ -1128,6 +1128,16 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
     const settings = getSettings();
     const metadataSnapshot = await this.getMetadataSnapshot();
 
+    // The Agents-window variant (targetChatSessionType: "copilotcli") is only
+    // hidden from the Chat view's in-session dropdown by filterModelsForSession().
+    // Surfaces that enumerate the raw registration list — most notably the Language
+    // Models management UI — show ALL registered models with no session filtering,
+    // so the ::agent-host copy appeared there too (issue #41, regression from PR #39).
+    // Gate the duplicate behind an opt-in setting so the default stays clean.
+    const showInAgentsWindow = vscode.workspace
+      .getConfiguration("opencodego")
+      .get("showInAgentsWindow", false);
+
     return models.flatMap((modelId) => {
       const metadata = this.resolveModelMetadata(modelId, metadataSnapshot);
       const routing = resolveModelRouting(modelId, this.definition);
@@ -1181,17 +1191,27 @@ class OpenCodeProvider implements vscode.LanguageModelChatProvider<OpenCodeModel
       // General variant — no targetChatSessionType → visible in Chat view
       const info: OpenCodeModel = { ...sharedFields, id: effectiveModelId };
 
+      this.log(`Model registered: id=${info.id} family=${info.family} metadataSource=${metadata.source} endpointKind=${routing.endpointKind} endpointUrl=${routing.endpointUrl} configurationSchema=${configurationSchema ? JSON.stringify(configurationSchema) : "none"}`);
+
+      // When showInAgentsWindow is off (default), return only the general
+      // variant so each model appears exactly once in all pickers and the
+      // Language Models management UI (regression fix for issue #41).
+      if (!showInAgentsWindow) {
+        return [info];
+      }
+
       // Agents-window variant — targetChatSessionType must match the `type`
       // declared in the Copilot extension's chatSessions contribution:
       //   { "type": "copilotcli", "requiresCustomModels": true, ... }
-      // Each surface only sees its own variant so there is no duplication.
+      // Name gets an "(Agents)" suffix so the two entries are visually
+      // distinguishable in the Language Models management UI when opt-in is on.
       const agentHostInfo: OpenCodeModel = {
         ...sharedFields,
         id: agentHostModelId,
+        name: `${sharedFields.name} (Agents)`,
         targetChatSessionType: "copilotcli"
       };
 
-      this.log(`Model registered: id=${info.id} family=${info.family} metadataSource=${metadata.source} endpointKind=${routing.endpointKind} endpointUrl=${routing.endpointUrl} configurationSchema=${configurationSchema ? JSON.stringify(configurationSchema) : "none"}`);
       this.log(`Model registered (agents-window): id=${agentHostInfo.id} targetChatSessionType=copilotcli`);
 
       return [info, agentHostInfo];
