@@ -7,6 +7,7 @@ import {
   readRateLimitInfo,
   truncateForLog,
 } from "./errors";
+import { analyzeHttp400ForRetry } from "./retry";
 import {
   normalizeGoogleFullResponse,
   normalizeGoogleStreamEvent,
@@ -351,19 +352,54 @@ async function streamOpenCodeResponse(
     // NOTE: We do NOT gzip-compress the payload.  The OpenCode proxy
     // does not support Content-Encoding: gzip and returns HTTP 500.
     // ------------------------------------------------------------------
-    const payload = rawPayload;
-    const fetchHeaders: Record<string, string> = {
+    let payload = rawPayload;
+    let fetchHeaders: Record<string, string> = {
       ...(options.authHeaders ?? { Authorization: `Bearer ${options.apiKey}` }),
       "Content-Type": "application/json",
       ...options.requestHeaders,
     };
 
-    const response = await fetch(options.url, {
+    let response = await fetch(options.url, {
       method: "POST",
       headers: fetchHeaders,
       body: payload,
       signal: controller.signal,
     });
+
+    // --- Runtime retry for recoverable HTTP 400 errors ---
+    // If the upstream rejects a parameter (thinking, temperature, reasoning_effort),
+    // patch the body and retry once. This handles stale models.dev metadata and
+    // provider API changes without requiring a code release.
+    let consumedErrorBody: string | undefined;
+    if (response.status === 400) {
+      const errorDetail = await response.text();
+      consumedErrorBody = errorDetail;
+      options.output?.appendLine(
+        `[http-error-body] ${errorDetail.trim() ? truncateForLog(errorDetail) : "<empty>"}`,
+      );
+      const parsedBody = JSON.parse(rawPayload) as Record<string, unknown>;
+      const patch = analyzeHttp400ForRetry(errorDetail, parsedBody);
+      if (patch) {
+        options.output?.appendLine(
+          `[retry] HTTP 400 recoverable: ${patch.reason}. Retrying with patched body…`,
+        );
+        payload = JSON.stringify(patch.body);
+        response = await fetch(options.url, {
+          method: "POST",
+          headers: fetchHeaders,
+          body: payload,
+          signal: controller.signal,
+        });
+        options.output?.appendLine(
+          `[retry] Response after patch: ${response.status} ${response.statusText}`,
+        );
+        // If retry also returned 400, consume its body so the normal error
+        // handler below doesn't try to re-read (the stream is already consumed).
+        if (!response.ok && response.status === 400) {
+          consumedErrorBody = await response.text();
+        }
+      }
+    }
 
     responseStatus = response.status;
     responseContentType = response.headers.get("content-type") ?? "";
@@ -378,7 +414,9 @@ async function streamOpenCodeResponse(
     }
 
     if (!response.ok) {
-      const detail = await response.text();
+      // Use already-consumed body if available (from retry logic above),
+      // otherwise read from the response stream.
+      const detail = consumedErrorBody ?? await response.text();
       options.output?.appendLine(
         `[http-error-body] ${detail.trim() ? truncateForLog(detail) : "<empty>"}`,
       );

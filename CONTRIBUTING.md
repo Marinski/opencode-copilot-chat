@@ -41,10 +41,46 @@ That's it! You can now test your changes in the Extension Development Host.
 ## 📋 Before you open a Pull Request
 
 - [ ] `npm run compile` passes (no errors)
+- [ ] `npm test` passes (all unit tests)
+- [ ] `npm run test-retry` passes (E2E retry test)
 - [ ] You tested it works (at least one model)
 - [ ] You updated docs if needed (CHANGELOG, README, or `docs/`)
 
 > **Don't worry about making it perfect.** Open the PR early — we can figure out the rest together. 💬
+
+---
+
+## 🧪 Validation Scripts
+
+### `npm run test-retry` — E2E retry test (no API key needed)
+Tests the runtime retry mechanism with a mock server. Proves that HTTP 400 → patch → retry → HTTP 200 works.
+
+### `npm run validate-models` — Live API validation (requires API key)
+Tests ALL thinking/reasoning parameter combinations for each model against the live OpenCode API. Reuses the extension's exact logic.
+
+```powershell
+$env:OPENCODE_API_KEY = "your-key"
+npm run validate-models
+
+# Test specific families
+npm run validate-models -- --families deepseek,kimi
+
+# Dry run (no API calls)
+npm run validate-models -- --dry-run
+```
+
+---
+
+## ⚠️ Automation Rules (AI Agents & Copilot)
+
+If you are an AI agent (GitHub Copilot, ChatGPT, etc.) working on this repo:
+
+1. **NEVER push without explicit permission.** Always ask "Should I push?" before running `git push`.
+2. **NEVER create PRs or merge without asking.** Let the human decide when to push and create PRs.
+3. **Commit only when asked.** Don't auto-commit unless the user explicitly requests it.
+4. **Work on feature branches.** Never commit directly to `main` — always create a branch first.
+
+These rules exist to prevent accidental pushes to production branches.
 
 ---
 
