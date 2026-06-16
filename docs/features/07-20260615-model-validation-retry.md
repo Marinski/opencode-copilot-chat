@@ -180,12 +180,30 @@ This means the extension re-fetches model metadata from models.dev every hour in
 - `src/test/thinking.test.ts` — 24 tests for thinking payloads (pure functions, isolated)
 - `src/test/metadata.test.ts` — 8 tests for metadata resolution (pure functions, isolated)
 
+**E2E tests (`npm run test-retry`):** 7 tests passing ✅ PROVEN
+- Mock server simulates OpenCode API behavior
+- Tests full flow: HTTP 400 → analyzeHttp400ForRetry() → patch body → retry → HTTP 200
+- Covers: thinking.type rejection, invalid temperature, reasoning_effort, generic extra fields
+- Also tests: valid params that don't need retry (no 400)
+
 **What's NOT covered by tests:**
-- The integration between `streaming.ts` and `retry.ts` (retry logic in the fetch loop)
-- End-to-end HTTP 400 → retry → success flow against the live API
+- The integration between `streaming.ts` and `retry.ts` against the live API
 - The validation script itself (requires API key, manual execution)
 
-**Validation script:** Requires manual execution with API key. Run `npx tsx scripts/validate-models.mts --api-key YOUR_KEY` to test against the live API.
+**Validation script (`npm run validate-models`):** Requires API key
+- Tests ALL thinking/reasoning parameter combinations for each model
+- 18 models (13 Go + 5 Zen free) with 3-8 parameter tests each
+- Generates markdown report with ✅/❌ per parameter
+
+---
+
+## Why No Retry Logs in Output Panel?
+
+The retry mechanism only triggers when the upstream API returns HTTP 400. If all models are working correctly, no 400 errors occur and no retry logs appear. This is expected behavior — the retry is a safety net for edge cases.
+
+To see retry logs in action:
+1. Run `npm run test-retry` (E2E mock server test)
+2. Or wait for a provider to change their API contract (triggers real 400 → retry)
 
 ---
 

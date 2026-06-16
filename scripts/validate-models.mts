@@ -2,32 +2,23 @@
 /**
  * validate-models.mts — Comprehensive model parameter validation suite.
  *
+ * Reuses the EXACT same logic as the extension:
+ * - buildThinkingPayload() from thinking.ts
+ * - resolveModelRouting() from routing.ts
+ * - buildOpenCodeGatewayAuthHeaders() from openCodeAuth.ts
+ *
  * For EACH model, tests ALL thinking/reasoning parameter combinations against
  * the live OpenCode API to verify what actually works.
- *
- * What it tests per model:
- * - Temperature: with and without (0.2)
- * - Thinking/reasoning: every possible value for that family
- * - Reports: ✅ accepted, ❌ rejected, ⚠️ unexpected behavior
  *
  * Usage:
  *   npx tsx scripts/validate-models.mts --api-key YOUR_KEY
  *   OPENCODE_API_KEY=... npx tsx scripts/validate-models.mts
- *
- * Options:
- *   --api-key <key>       OpenCode API key (or OPENCODE_API_KEY env var)
- *   --go                  Include OpenCode Go models (default: true)
- *   --zen-free            Include Zen free models (default: true)
- *   --zen-paid            Include Zen paid models (default: false)
- *   --families <list>     Filter: gpt,claude,gemini,qwen,deepseek,kimi,glm,minimax,mimo
- *   --models <list>       Specific model IDs (comma-separated)
- *   --skip-models <list>  Exclude model IDs (comma-separated)
- *   --dry-run             Print test plan without sending requests
- *   --json                Output as JSON
- *   --timeout <ms>        Request timeout (default: 30000)
  */
 
 import { parseArgs } from "node:util";
+import { buildThinkingPayload, type ThinkingSettings } from "../src/thinking.js";
+import { resolveModelRouting } from "../src/routing.js";
+import { buildOpenCodeGatewayAuthHeaders } from "../src/openCodeAuth.js";
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -57,8 +48,6 @@ Usage: npx tsx scripts/validate-models.mts [options]
 Examples:
   npx tsx scripts/validate-models.mts --api-key YOUR_KEY
   npx tsx scripts/validate-models.mts --api-key YOUR_KEY --families deepseek,kimi
-  npx tsx scripts/validate-models.mts --api-key YOUR_KEY --models kimi-k2.7-code,minimax-m2.7
-  npx tsx scripts/validate-models.mts --api-key YOUR_KEY --zen-paid
   npx tsx scripts/validate-models.mts --dry-run
 `);
   process.exit(0);
@@ -94,7 +83,8 @@ interface ModelInfo {
 
 interface ParamTest {
   name: string;
-  bodyModifier: (body: Record<string, unknown>) => Record<string, unknown>;
+  settings: Partial<ThinkingSettings>;
+  hasImageInput?: boolean;
 }
 
 interface TestResult {
@@ -129,131 +119,123 @@ function detectFamily(id: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Endpoint resolution (mirrors routing.ts)
+// Build test parameters using extension's buildThinkingPayload
 // ---------------------------------------------------------------------------
 
-function resolveEndpoint(model: ModelInfo): { url: string; kind: string } {
-  const base = model.vendor === "go" ? GO_BASE : ZEN_BASE;
-
-  if (model.vendor === "zen" && /^gpt-/i.test(model.id)) {
-    return { url: `${base.replace("/v1", "")}/responses`, kind: "responses" };
-  }
-  if (/^claude-/i.test(model.id)) {
-    return { url: `${base}/messages`, kind: "messages" };
-  }
-  if (model.vendor === "go" && /^minimax-m2\./i.test(model.id)) {
-    return { url: `${base}/messages`, kind: "messages" };
-  }
-  if (/^qwen3\.(?:5|6)-plus(?:-free)?$/i.test(model.id) || /^qwen3\.7-max$/i.test(model.id)) {
-    return { url: `${base}/messages`, kind: "messages" };
-  }
-  if (model.vendor === "zen" && /^gemini-/i.test(model.id)) {
-    return { url: `${base}/models/${model.id}`, kind: "google" };
-  }
-  return { url: `${base}/chat/completions`, kind: "chat-completions" };
-}
-
-// ---------------------------------------------------------------------------
-// Test parameter generators per family
-// ---------------------------------------------------------------------------
+const DEFAULT_SETTINGS: ThinkingSettings = {
+  deepseek: "off",
+  glm: "off",
+  kimi: "off",
+  minimax: "off",
+  qwen: "off",
+  qwenBudget: "auto",
+  mimo: "off",
+};
 
 function buildThinkingTests(model: ModelInfo): ParamTest[] {
   const id = model.id;
   const tests: ParamTest[] = [];
 
-  // --- Temperature tests ---
+  // Temperature tests
   if (model.temperature !== false) {
-    tests.push({ name: "temp=0.2", bodyModifier: (b) => ({ ...b, temperature: 0.2 }) });
+    tests.push({ name: "temp=0.2", settings: {} });
   }
-  tests.push({ name: "no-temp", bodyModifier: (b) => { const n = { ...b }; delete n.temperature; return n; } });
+  tests.push({ name: "no-temp", settings: {} });
 
-  // --- Thinking/reasoning tests per family ---
   if (!model.reasoning) return tests;
 
+  // Kimi K2.7: always on
   if (/^kimi-k2\.7/i.test(id)) {
-    // K2.7: thinking always on
-    tests.push({ name: "thinking=enabled,keep=all", bodyModifier: (b) => ({ ...b, thinking: { type: "enabled", keep: "all" } }) });
-    tests.push({ name: "thinking=disabled (should-fail)", bodyModifier: (b) => ({ ...b, thinking: { type: "disabled" } }) });
-  } else if (/^kimi-/i.test(id)) {
-    // K2.6/K2.5: thinking on/off
-    tests.push({ name: "thinking=enabled", bodyModifier: (b) => ({ ...b, thinking: { type: "enabled" } }) });
-    tests.push({ name: "thinking=disabled", bodyModifier: (b) => ({ ...b, thinking: { type: "disabled" } }) });
-  } else if (/^deepseek-/i.test(id)) {
-    // DeepSeek: reasoning_effort values
-    for (const effort of ["low", "medium", "high", "max"]) {
-      tests.push({ name: `reasoning_effort=${effort}`, bodyModifier: (b) => ({ ...b, reasoning_effort: effort }) });
-    }
-    tests.push({ name: "no-reasoning (off)", bodyModifier: (b) => { const n = { ...b }; delete n.reasoning_effort; return n; } });
-  } else if (/^glm-/i.test(id)) {
-    // GLM: thinking type
-    tests.push({ name: "thinking=enabled", bodyModifier: (b) => ({ ...b, thinking: { type: "enabled" } }) });
-    tests.push({ name: "thinking=disabled", bodyModifier: (b) => ({ ...b, thinking: { type: "disabled" } }) });
-  } else if (/^qwen/i.test(id)) {
-    // Qwen: enable_thinking + thinking_budget
-    tests.push({ name: "enable_thinking=true", bodyModifier: (b) => ({ ...b, enable_thinking: true }) });
-    tests.push({ name: "enable_thinking=false", bodyModifier: (b) => ({ ...b, enable_thinking: false }) });
-    tests.push({ name: "enable_thinking=true,budget=4096", bodyModifier: (b) => ({ ...b, enable_thinking: true, thinking_budget: 4096 }) });
-    tests.push({ name: "enable_thinking=true,budget=32768", bodyModifier: (b) => ({ ...b, enable_thinking: true, thinking_budget: 32768 }) });
-    // Anthropic format (for messages endpoint)
-    if (resolveEndpoint(model).kind === "messages") {
-      tests.push({ name: "thinking=enabled (anthropic)", bodyModifier: (b) => ({ ...b, thinking: { type: "enabled" } }) });
-      tests.push({ name: "thinking=disabled (anthropic)", bodyModifier: (b) => ({ ...b, thinking: { type: "disabled" } }) });
-    }
-  } else if (/^mimo-/i.test(id)) {
-    // MiMo: reasoning_effort
-    for (const effort of ["low", "medium", "high"]) {
-      tests.push({ name: `reasoning_effort=${effort}`, bodyModifier: (b) => ({ ...b, reasoning_effort: effort }) });
-    }
-    tests.push({ name: "no-reasoning (off)", bodyModifier: (b) => { const n = { ...b }; delete n.reasoning_effort; return n; } });
-  } else if (/^minimax-m2\./i.test(id)) {
-    // MiniMax M2.*: thinking type (Anthropic format)
-    tests.push({ name: "thinking=enabled", bodyModifier: (b) => ({ ...b, thinking: { type: "enabled" } }) });
-    tests.push({ name: "thinking=disabled", bodyModifier: (b) => ({ ...b, thinking: { type: "disabled" } }) });
-  } else if (/^minimax-m3/i.test(id)) {
-    // MiniMax M3: thinking adaptive
-    tests.push({ name: "thinking=adaptive", bodyModifier: (b) => ({ ...b, thinking: { type: "adaptive" } }) });
-    tests.push({ name: "thinking=disabled", bodyModifier: (b) => ({ ...b, thinking: { type: "disabled" } }) });
+    tests.push({ name: "thinking=enabled,keep=all", settings: { kimi: "on" } });
+    tests.push({ name: "thinking=disabled (should-fail)", settings: { kimi: "off" } });
   }
-
-  // Also test with models.dev reasoning_options if available
-  if (model.reasoningOptions) {
-    const effortValues = model.reasoningOptions
-      .filter(o => o.type === "effort" && Array.isArray(o.values))
-      .flatMap(o => o.values!)
-      .filter((v, i, a) => a.indexOf(v) === i);
-
-    for (const v of effortValues) {
-      const testName = `modelsdev_effort=${v}`;
-      if (!tests.some(t => t.name.includes(v))) {
-        tests.push({ name: testName, bodyModifier: (b) => ({ ...b, reasoning_effort: v }) });
-      }
+  // Kimi K2.6/K2.5: on/off
+  else if (/^kimi-/i.test(id)) {
+    tests.push({ name: "thinking=enabled", settings: { kimi: "on" } });
+    tests.push({ name: "thinking=disabled", settings: { kimi: "off" } });
+  }
+  // DeepSeek: reasoning_effort values
+  else if (/^deepseek-/i.test(id)) {
+    for (const effort of ["low", "medium", "high", "max"] as const) {
+      tests.push({ name: `reasoning_effort=${effort}`, settings: { deepseek: effort } });
     }
+    tests.push({ name: "no-reasoning (off)", settings: { deepseek: "off" } });
+  }
+  // GLM: thinking type
+  else if (/^glm-/i.test(id)) {
+    tests.push({ name: "thinking=enabled", settings: { glm: "on" } });
+    tests.push({ name: "thinking=disabled", settings: { glm: "off" } });
+  }
+  // Qwen: enable_thinking + budget
+  else if (/^qwen/i.test(id)) {
+    tests.push({ name: "enable_thinking=true", settings: { qwen: "on" } });
+    tests.push({ name: "enable_thinking=false", settings: { qwen: "off" } });
+    tests.push({ name: "enable_thinking=true,budget=4096", settings: { qwen: "on", qwenBudget: "4096" } });
+    tests.push({ name: "enable_thinking=true,budget=32768", settings: { qwen: "on", qwenBudget: "32768" } });
+    tests.push({ name: "auto (no enable_thinking)", settings: { qwen: "auto" } });
+  }
+  // MiMo: reasoning_effort
+  else if (/^mimo-/i.test(id)) {
+    for (const effort of ["low", "medium", "high"] as const) {
+      tests.push({ name: `reasoning_effort=${effort}`, settings: { mimo: effort } });
+    }
+    tests.push({ name: "no-reasoning (off)", settings: { mimo: "off" } });
+  }
+  // MiniMax M2.*: thinking type (Anthropic format)
+  else if (/^minimax-m2\./i.test(id)) {
+    tests.push({ name: "thinking=enabled", settings: { minimax: "on" } });
+    tests.push({ name: "thinking=disabled", settings: { minimax: "off" } });
+  }
+  // MiniMax M3: thinking adaptive
+  else if (/^minimax-m3/i.test(id)) {
+    tests.push({ name: "thinking=adaptive", settings: { minimax: "on" } });
+    tests.push({ name: "thinking=disabled", settings: { minimax: "off" } });
   }
 
   return tests;
 }
 
 // ---------------------------------------------------------------------------
-// API call
+// API call using extension's routing + auth
 // ---------------------------------------------------------------------------
 
-async function testParameter(model: ModelInfo, test: ParamTest, endpoint: { url: string; kind: string }): Promise<TestResult> {
-  const baseBody: Record<string, unknown> = {
+async function testParameter(model: ModelInfo, test: ParamTest): Promise<TestResult> {
+  // Build the provider definition matching what the extension uses
+  const provider = model.vendor === "go"
+    ? { chatCompletionsUrl: `${GO_BASE}/chat/completions`, messagesUrl: `${GO_BASE}/messages`, responsesUrl: `${GO_BASE}/responses`, modelsUrl: `${GO_BASE}/models`, vendor: "opencodego" as const }
+    : { chatCompletionsUrl: `${ZEN_BASE}/chat/completions`, messagesUrl: `${ZEN_BASE}/messages`, responsesUrl: `${ZEN_BASE}/responses`, modelsUrl: `${ZEN_BASE}/models`, vendor: "opencodezen" as const };
+
+  // Use extension's routing to determine endpoint
+  const routing = resolveModelRouting(model.id, provider);
+
+  // Use extension's auth headers
+  const authHeaders = buildOpenCodeGatewayAuthHeaders(routing.endpointKind, API_KEY!);
+
+  // Build thinking payload using extension's buildThinkingPayload
+  const thinking: ThinkingSettings = { ...DEFAULT_SETTINGS, ...test.settings };
+  const thinkingPayload = buildThinkingPayload(model.id, thinking, test.hasImageInput);
+
+  // Build the full request body exactly as the extension would
+  const body: Record<string, unknown> = {
     model: model.id,
     messages: [{ role: "user", content: "Say OK" }],
     max_tokens: 10,
+    ...thinkingPayload,
   };
 
-  const body = test.bodyModifier(baseBody);
+  // Add temperature unless model doesn't support it
+  if (test.name !== "no-temp" && model.temperature !== false) {
+    body.temperature = 0.2;
+  }
 
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-    const response = await fetch(endpoint.url, {
+    const response = await fetch(routing.endpointUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${API_KEY}`,
+        ...authHeaders,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -302,7 +284,7 @@ async function fetchModels(): Promise<ModelInfo[]> {
   const data = await response.json() as ModelsDevResponse;
   const models: ModelInfo[] = [];
 
-  const goProvider = data["opencode-go"] ?? data["opencode"]?.["go"];
+  const goProvider = data["opencode-go"];
   if (goProvider?.models && INCLUDE_GO) {
     for (const [id, info] of Object.entries(goProvider.models)) {
       if (SKIP_MODELS.has(id) || info.status === "deprecated") continue;
@@ -315,10 +297,7 @@ async function fetchModels(): Promise<ModelInfo[]> {
 
   const zenProvider = data["opencode"];
   if (zenProvider?.models && (INCLUDE_ZEN_FREE || INCLUDE_ZEN_PAID)) {
-    // opencode provider contains ALL models (Go + Zen). Go models are already
-    // added from opencode-go above, so we need to deduplicate.
     const goModelIds = new Set(goProvider?.models ? Object.keys(goProvider.models) : []);
-
     for (const [id, info] of Object.entries(zenProvider.models)) {
       if (SKIP_MODELS.has(id) || info.status === "deprecated") continue;
       if (MODELS_FILTER && !MODELS_FILTER.includes(id)) continue;
@@ -327,7 +306,6 @@ async function fetchModels(): Promise<ModelInfo[]> {
       const isFree = id.endsWith("-free") || id === "big-pickle";
       if (!INCLUDE_ZEN_PAID && !isFree) continue;
       if (!INCLUDE_ZEN_FREE && isFree) continue;
-      // Skip models already added from opencode-go
       if (goModelIds.has(id)) continue;
       models.push({ id, vendor: "zen", family, reasoning: info.reasoning ?? false, reasoningOptions: info.reasoning_options, temperature: info.temperature !== false });
     }
@@ -342,13 +320,11 @@ async function fetchModels(): Promise<ModelInfo[]> {
 
 function formatReport(results: TestResult[], models: ModelInfo[]): string {
   const lines: string[] = [];
-  const now = new Date().toISOString();
   lines.push("# Model Parameter Validation Report");
-  lines.push(`Generated: ${now}`);
+  lines.push(`Generated: ${new Date().toISOString()}`);
   lines.push(`Models: ${models.length} | Tests: ${results.length}`);
   lines.push("");
 
-  // Summary by family
   const byFamily = new Map<string, TestResult[]>();
   for (const r of results) {
     if (!byFamily.has(r.family)) byFamily.set(r.family, []);
@@ -369,10 +345,9 @@ function formatReport(results: TestResult[], models: ModelInfo[]): string {
   }
   lines.push("");
 
-  // Detailed failures
   const failures = results.filter(r => r.status === "❌");
   if (failures.length > 0) {
-    lines.push("## ❌ Failures (parameters rejected by API)");
+    lines.push("## ❌ Failures");
     lines.push("");
     lines.push("| Model | Vendor | Parameter | HTTP | Error |");
     lines.push("|-------|--------|-----------|------|-------|");
@@ -382,7 +357,6 @@ function formatReport(results: TestResult[], models: ModelInfo[]): string {
     lines.push("");
   }
 
-  // Per-model detail
   lines.push("## Per-Model Results");
   lines.push("");
 
@@ -413,7 +387,13 @@ function formatReport(results: TestResult[], models: ModelInfo[]): string {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.error("🔍 Model Parameter Validation Suite\n");
+  console.error("🔍 Model Parameter Validation Suite (using extension logic)\n");
+
+  if (!API_KEY && !DRY_RUN) {
+    console.error("❌ API key required for live testing. Use --api-key or set OPENCODE_API_KEY.");
+    console.error("   Use --dry-run to see the test plan without an API key.");
+    process.exit(1);
+  }
 
   console.error("📡 Fetching models from models.dev…");
   const models = await fetchModels();
@@ -424,31 +404,30 @@ async function main() {
     process.exit(1);
   }
 
-  if (!API_KEY && !DRY_RUN) {
-    console.error("❌ API key required for live testing. Use --api-key or set OPENCODE_API_KEY.");
-    console.error("   Use --dry-run to see the test plan without an API key.");
-    process.exit(1);
-  }
-
   const results: TestResult[] = [];
   let testCount = 0;
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
     const tests = buildThinkingTests(model);
-    const endpoint = resolveEndpoint(model);
 
     process.stderr.write(`[${i + 1}/${models.length}] ${model.vendor}/${model.id} (${tests.length} params)… `);
 
     if (DRY_RUN) {
-      console.log(`  ${model.id}: ${tests.map(t => t.name).join(", ")}`);
+      const summaries = tests.map(t => {
+        const thinking: ThinkingSettings = { ...DEFAULT_SETTINGS, ...t.settings };
+        const payload = buildThinkingPayload(model.id, thinking, t.hasImageInput);
+        const fields = Object.keys(payload).filter(k => k !== "model");
+        return `${t.name} → ${fields.length > 0 ? JSON.stringify(payload) : "(no thinking params)"}`;
+      });
+      console.log(`  ${model.id}:\n    ${summaries.join("\n    ")}`);
       continue;
     }
 
     let pass = 0;
     let fail = 0;
     for (const test of tests) {
-      const result = await testParameter(model, test, endpoint);
+      const result = await testParameter(model, test);
       results.push(result);
       testCount++;
       if (result.status === "✅") pass++;

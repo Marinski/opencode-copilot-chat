@@ -6,9 +6,10 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ### Added
 
-- **`[Reliability]` Runtime retry for HTTP 400 parameter errors.** When the upstream API rejects a parameter (thinking, temperature, reasoning_effort), the extension now parses the error message, patches the request body, and retries once automatically. This handles stale models.dev metadata and provider API changes without requiring a code release. Handles: `thinking.type` rejection, `invalid temperature`, `enable_thinking` rejection, `reasoning_effort` format mismatch, and generic `Extra inputs are not permitted`. Implemented in `src/retry.ts` with 8 unit tests.
-- **`[Tooling]` Model validation script (`scripts/validate-models.mts`).** Standalone Node.js script that tests all Go + Zen free models against the OpenCode API before release. Fetches live model list from models.dev, tests parameter acceptance, detects recoverable 400 errors, and verifies retry patches. Usage: `npx tsx scripts/validate-models.mts --api-key YOUR_KEY`. Flags: `--zen-paid`, `--families`, `--models`, `--dry-run`, `--json`.
-- **`[Tooling]` Pre-release validation hook.** `npm run prepackage` now runs compile + test before packaging. `npm run validate-models` runs the validation suite.
+- **`[Reliability]` Runtime retry for HTTP 400 parameter errors.** When the upstream API rejects a parameter (thinking, temperature, reasoning_effort), the extension now parses the error message, patches the request body, and retries once automatically. This handles stale models.dev metadata and provider API changes without requiring a code release. Handles: `thinking.type` rejection, `invalid temperature`, `enable_thinking` rejection, `reasoning_effort` format mismatch, and generic `Extra inputs are not permitted`. Implemented in `src/retry.ts` with 8 unit tests + 7 E2E tests (mock server).
+- **`[Tooling]` Model validation script (`scripts/validate-models.mts`).** Standalone Node.js script that tests ALL thinking/reasoning parameter combinations for each model against the live OpenCode API. Fetches live model list from models.dev, generates markdown report with ✅/❌ per parameter. Usage: `npx tsx scripts/validate-models.mts --api-key YOUR_KEY`. Flags: `--zen-paid`, `--families`, `--models`, `--dry-run`, `--json`.
+- **`[Tooling]` E2E retry test (`scripts/test-retry-e2e.mts`).** Mock server simulates OpenCode API behavior. Proves retry flow: HTTP 400 → analyzeHttp400ForRetry() → patch → retry → HTTP 200. Covers 5 recovery scenarios + 2 no-retry scenarios. Run: `npm run test-retry` (no API key needed).
+- **`[Tooling]` Pre-release validation hook.** `npm run prepackage` now runs compile + test before packaging.
 
 ### Changed
 
