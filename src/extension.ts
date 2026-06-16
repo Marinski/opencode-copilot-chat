@@ -450,6 +450,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(goUsageLogChannel);
   goUsageTracker = new GoUsageTracker(context, (msg) => {
     goUsageLogChannel.appendLine(`[${new Date().toISOString()}] ${msg}`);
+  }, (modelId) => {
+    return modelMetadataSnapshot?.providers[GO_VENDOR]?.[modelId]?.cost;
   });
   ensureUsageStatusBar(context);
   ensureGoUsageStatusBar(context);

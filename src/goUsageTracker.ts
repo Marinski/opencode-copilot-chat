@@ -7,6 +7,9 @@ import { GO_VENDOR } from "./providerTypes";
 import type { ModelCost } from "./metadata";
 import type { TransportRequestSummary } from "./streaming";
 
+/** Callback to resolve live model cost from the models.dev metadata cache. */
+export type CostResolver = (modelId: string) => ModelCost | undefined;
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "opencodego.usageLog.v1";
@@ -23,7 +26,9 @@ const GO_LIMITS = {
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const WEEK_MS       = 7 * 24 * 60 * 60 * 1000;
 
-// ─── Go model pricing ($/1M tokens) from https://opencode.ai/docs/go ────────
+// ─── Go model pricing ($/1M tokens) — bundled snapshot fallback ────────────
+// This table is a static snapshot kept as a last resort. The primary source
+// is the live models.dev metadata cache injected via CostResolver.
 
 const GO_MODEL_PRICING: Record<string, ModelCost> = {
   "glm-5.1":         { input: 1.40, output: 4.40,  cache_read: 0.26  },
@@ -168,8 +173,10 @@ function estimateCost(
   completionTokens: number,
   cachedTokens: number,
   externalCost?: ModelCost,
+  liveCostResolver?: CostResolver,
 ): number {
-  const pricing = externalCost ?? GO_MODEL_PRICING[modelId];
+  // Priority: caller-provided cost > live models.dev snapshot > bundled table
+  const pricing = externalCost ?? liveCostResolver?.(modelId) ?? GO_MODEL_PRICING[modelId];
   if (!pricing) return 0;
 
   const billablePrompt = Math.max(0, promptTokens - cachedTokens);
@@ -230,13 +237,21 @@ export class GoUsageTracker {
   private entries: UsageLogEntry[] = [];
   private baseline: UsageBaseline = {};
   private readonly log?: (msg: string) => void;
+  private costResolver?: CostResolver;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     log?: (msg: string) => void,
+    costResolver?: CostResolver,
   ) {
     this.log = log;
+    this.costResolver = costResolver;
     this.restore();
+  }
+
+  /** Update the live cost resolver (e.g. after models.dev refresh). */
+  setCostResolver(resolver: CostResolver): void {
+    this.costResolver = resolver;
   }
 
   /** Record a completed Go request. externalCost is from resolved metadata if available. */
@@ -256,7 +271,7 @@ export class GoUsageTracker {
       return;
     }
 
-    const cost = estimateCost(summary.modelId, prompt, completion, cached, externalCost);
+    const cost = estimateCost(summary.modelId, prompt, completion, cached, externalCost, this.costResolver);
 
     this.log?.(`[go-tracker] RECORD: model=${summary.modelId} prompt=${prompt} completion=${completion} cached=${cached} cost=$${cost.toFixed(6)}`);
 
