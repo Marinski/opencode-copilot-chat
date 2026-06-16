@@ -7,7 +7,6 @@ import {
   readRateLimitInfo,
   truncateForLog,
 } from "./errors";
-import { analyzeHttp400ForRetry } from "./retry";
 import {
   normalizeGoogleFullResponse,
   normalizeGoogleStreamEvent,
@@ -352,47 +351,19 @@ async function streamOpenCodeResponse(
     // NOTE: We do NOT gzip-compress the payload.  The OpenCode proxy
     // does not support Content-Encoding: gzip and returns HTTP 500.
     // ------------------------------------------------------------------
-    let payload = rawPayload;
-    let fetchHeaders: Record<string, string> = {
+    const payload = rawPayload;
+    const fetchHeaders: Record<string, string> = {
       ...(options.authHeaders ?? { Authorization: `Bearer ${options.apiKey}` }),
       "Content-Type": "application/json",
       ...options.requestHeaders,
     };
 
-    let response = await fetch(options.url, {
+    const response = await fetch(options.url, {
       method: "POST",
       headers: fetchHeaders,
       body: payload,
       signal: controller.signal,
     });
-
-    // --- Runtime retry for recoverable HTTP 400 errors ---
-    // If the upstream rejects a parameter (thinking, temperature, reasoning_effort),
-    // patch the body and retry once. This handles stale models.dev metadata and
-    // provider API changes without requiring a code release.
-    if (response.status === 400) {
-      const errorDetail = await response.text();
-      options.output?.appendLine(
-        `[http-error-body] ${errorDetail.trim() ? truncateForLog(errorDetail) : "<empty>"}`,
-      );
-      const parsedBody = JSON.parse(rawPayload) as Record<string, unknown>;
-      const patch = analyzeHttp400ForRetry(errorDetail, parsedBody);
-      if (patch) {
-        options.output?.appendLine(
-          `[retry] HTTP 400 recoverable: ${patch.reason}. Retrying with patched body…`,
-        );
-        payload = JSON.stringify(patch.body);
-        response = await fetch(options.url, {
-          method: "POST",
-          headers: fetchHeaders,
-          body: payload,
-          signal: controller.signal,
-        });
-        options.output?.appendLine(
-          `[retry] Response after patch: ${response.status} ${response.statusText}`,
-        );
-      }
-    }
 
     responseStatus = response.status;
     responseContentType = response.headers.get("content-type") ?? "";
