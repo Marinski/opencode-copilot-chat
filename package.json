@@ -254,6 +254,7 @@
     "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
     "watch": "tsc -watch -p ./",
     "validate-models": "npx tsx scripts/validate-models.mts",
+    "test-retry": "npx tsx scripts/test-retry-integration.mts",
     "prepackage": "npm run compile && npm test",
     "package": "vsce package",
     "vscode:prepublish": "npm run compile"
