@@ -370,8 +370,10 @@ async function streamOpenCodeResponse(
     // If the upstream rejects a parameter (thinking, temperature, reasoning_effort),
     // patch the body and retry once. This handles stale models.dev metadata and
     // provider API changes without requiring a code release.
+    let consumedErrorBody: string | undefined;
     if (response.status === 400) {
       const errorDetail = await response.text();
+      consumedErrorBody = errorDetail;
       options.output?.appendLine(
         `[http-error-body] ${errorDetail.trim() ? truncateForLog(errorDetail) : "<empty>"}`,
       );
@@ -391,6 +393,11 @@ async function streamOpenCodeResponse(
         options.output?.appendLine(
           `[retry] Response after patch: ${response.status} ${response.statusText}`,
         );
+        // If retry also returned 400, consume its body so the normal error
+        // handler below doesn't try to re-read (the stream is already consumed).
+        if (!response.ok && response.status === 400) {
+          consumedErrorBody = await response.text();
+        }
       }
     }
 
@@ -407,7 +414,9 @@ async function streamOpenCodeResponse(
     }
 
     if (!response.ok) {
-      const detail = await response.text();
+      // Use already-consumed body if available (from retry logic above),
+      // otherwise read from the response stream.
+      const detail = consumedErrorBody ?? await response.text();
       options.output?.appendLine(
         `[http-error-body] ${detail.trim() ? truncateForLog(detail) : "<empty>"}`,
       );

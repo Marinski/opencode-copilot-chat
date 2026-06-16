@@ -2,6 +2,25 @@
 
 All notable changes to the **OpenCode Go BYOK Provider** extension are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **`[Reliability]` Runtime retry for HTTP 400 parameter errors.** When the upstream API rejects a parameter (thinking, temperature, reasoning_effort), the extension now parses the error message, patches the request body, and retries once automatically. This handles stale models.dev metadata and provider API changes without requiring a code release. Handles: `thinking.type` rejection, `invalid temperature`, `enable_thinking` rejection, `reasoning_effort` format mismatch, and generic `Extra inputs are not permitted`. Implemented in `src/retry.ts` with 8 unit tests.
+- **`[Tooling]` Model validation script (`scripts/validate-models.mts`).** Standalone Node.js script that tests all Go + Zen free models against the OpenCode API before release. Fetches live model list from models.dev, tests parameter acceptance, detects recoverable 400 errors, and verifies retry patches. Usage: `npx tsx scripts/validate-models.mts --api-key YOUR_KEY`. Flags: `--zen-paid`, `--families`, `--models`, `--dry-run`, `--json`.
+- **`[Tooling]` Pre-release validation hook.** `npm run prepackage` now runs compile + test before packaging. `npm run validate-models` runs the validation suite.
+
+### Changed
+
+- **`[Metadata]` models.dev cache TTL reduced from 6 hours to 1 hour.** Detects provider API changes faster, reducing the window where stale metadata causes HTTP 400 errors. Mitigation for [#24](https://github.com/ltmoerdani/opencode-copilot-chat/issues/24).
+- **`[Contributing]` Automation rules for AI agents.** CONTRIBUTING.md now documents rules for AI agents: never push without permission, never create PRs without asking, work on feature branches.
+
+### Documentation
+
+- Feature doc: `docs/features/07-20260615-model-validation-retry.md`
+
+Fixes [#24](https://github.com/ltmoerdani/opencode-copilot-chat/issues/24).
+
 ## [0.3.2] — 2026-06-15
 
 ### Fixed
