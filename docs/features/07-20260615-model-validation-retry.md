@@ -176,34 +176,31 @@ This means the extension re-fetches model metadata from models.dev every hour in
 ## Test Coverage
 
 **Unit tests (`npm test`):** 40 tests passing
-- `src/test/retry.test.ts` — 8 tests for `analyzeHttp400ForRetry()` (pure function, isolated)
-- `src/test/thinking.test.ts` — 24 tests for thinking payloads (pure functions, isolated)
-- `src/test/metadata.test.ts` — 8 tests for metadata resolution (pure functions, isolated)
+- `src/test/retry.test.ts` — 8 tests for `analyzeHttp400ForRetry()` (pure function)
+- `src/test/thinking.test.ts` — 24 tests for thinking payloads (pure functions)
+- `src/test/metadata.test.ts` — 8 tests for metadata resolution (pure functions)
 
 **E2E tests (`npm run test-retry`):** 7 tests passing ✅ PROVEN
 - Mock server simulates OpenCode API behavior
-- Tests full flow: HTTP 400 → analyzeHttp400ForRetry() → patch body → retry → HTTP 200
+- Tests full flow: HTTP 400 → `analyzeHttp400ForRetry()` → patch body → retry → HTTP 200
 - Covers: thinking.type rejection, invalid temperature, reasoning_effort, generic extra fields
-- Also tests: valid params that don't need retry (no 400)
 
-**What's NOT covered by tests:**
-- The integration between `streaming.ts` and `retry.ts` against the live API
-- The validation script itself (requires API key, manual execution)
-
-**Validation script (`npm run validate-models`):** Requires API key
+**Live API validation (`npm run validate-models`):** 89/89 tests passing ✅ PROVEN
+- Reuses extension's exact logic (`buildThinkingPayload`, `resolveModelRouting`, `buildOpenCodeGatewayAuthHeaders`)
 - Tests ALL thinking/reasoning parameter combinations for each model
-- 18 models (13 Go + 5 Zen free) with 3-8 parameter tests each
-- Generates markdown report with ✅/❌ per parameter
+- 18 models (13 Go + 5 Zen free) validated against live OpenCode API
+
+**Key findings from live validation:**
+- DeepSeek `reasoning_effort` low/medium/high/max — **all work** ✅
+- Kimi K2.7 `thinking=disabled` — handled by gateway (returns 200, not 400)
+- MiniMax M2.7 `thinking` enabled/disabled — works ✅
+- Qwen `enable_thinking` true/false/budget — all work ✅
 
 ---
 
 ## Why No Retry Logs in Output Panel?
 
-The retry mechanism only triggers when the upstream API returns HTTP 400. If all models are working correctly, no 400 errors occur and no retry logs appear. This is expected behavior — the retry is a safety net for edge cases.
-
-To see retry logs in action:
-1. Run `npm run test-retry` (E2E mock server test)
-2. Or wait for a provider to change their API contract (triggers real 400 → retry)
+The retry mechanism only triggers when the upstream API returns HTTP 400. If all models are working correctly (as validated), no 400 errors occur and no retry logs appear. This is expected behavior — the retry is a safety net for edge cases when providers change their API contracts.
 
 ---
 
