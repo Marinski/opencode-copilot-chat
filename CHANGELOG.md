@@ -4,8 +4,13 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [0.3.3] — 2026-06-17
+
 ### Added
 
+- **`[Usage]` Manual usage targets editor for the Go usage tracker.** New command **"OpenCode Go: Set Usage Targets…"** (`opencodego.setUsageTargets`) opens 5 sequential input boxes pre-filled with current values — session spent (5h rolling, limit $12), weekly spent (Mon–Mon UTC, limit $30), monthly spent (limit $60), monthly reset day (1–31), and monthly reset hour (0–23 UTC). Press Enter to keep the current value; Escape cancels the flow. Targets persist in `globalState` as baseline amounts, with a custom `expiresAt` anchor for the monthly counter. The status bar tooltip now links to this command via a `[$(pencil) Set spent targets]` markdown command link. Closes [#23](https://github.com/ltmoerdani/opencode-copilot-chat/issues/23). PR [#50](https://github.com/ltmoerdani/opencode-copilot-chat/pull/50) by [@Wallacy](https://github.com/Wallacy).
 - **`[Reliability]` Runtime retry for HTTP 400 parameter errors.** When the upstream API rejects a parameter (thinking, temperature, reasoning_effort), the extension now parses the error message, patches the request body, and retries once automatically. This handles stale models.dev metadata and provider API changes without requiring a code release. Handles: `thinking.type` rejection, `invalid temperature`, `enable_thinking` rejection, `reasoning_effort` format mismatch, and generic `Extra inputs are not permitted`. Implemented in `src/retry.ts` with 8 unit tests + 7 E2E tests (mock server). Body consumption bug fixed to prevent double-read on non-recoverable errors.
 - **`[Tooling]` Model validation script (`scripts/validate-models.mts`).** Pre-release validation that tests ALL thinking/reasoning parameter combinations for each model against the live OpenCode API. Reuses the extension's exact logic (`buildThinkingPayload`, `resolveModelRouting`, `buildOpenCodeGatewayAuthHeaders`) — no duplicated routing/auth/thinking code. Fetches live model list from models.dev. Run: `npm run validate-models -- --api-key YOUR_KEY`. Validated 89 parameter combinations across 18 models (13 Go + 5 Zen free) — all passing.
 - **`[Tooling]` E2E retry test (`scripts/test-retry-e2e.mts`).** Mock server simulates OpenCode API behavior. Proves retry flow: HTTP 400 → `analyzeHttp400ForRetry()` → patch → retry → HTTP 200. Covers 5 recovery scenarios + 2 no-retry scenarios. Run: `npm run test-retry` (no API key needed).
@@ -13,11 +18,15 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ### Changed
 
+- **`[Usage]` Monthly reset display respects user-configured anchor date.** `buildSummaryFromRows` and `buildSummaryFromTracked` now return `baseline.monthly.expiresAt` as `resetsAt` when a monthly baseline exists, so the "resets in Xd Yh" text reflects the user-set anchor instead of the auto-calculated month end. Previously the manual anchor was ignored on display.
+- **`[Usage]` Live models.dev pricing injected into Go usage tracker.** A `CostResolver` callback is now passed to `GoUsageTracker` that reads `modelMetadataSnapshot.providers[GO_VENDOR]?.[modelId]?.cost`. Cost resolution priority: per-request `externalCost` → live models.dev snapshot → bundled `GO_MODEL_PRICING` table (kept as last-resort fallback so the extension stays functional when live fetch fails).
+- **`[Usage]` Usage webview hardened (`enableScripts: false`).** The usage details panel is now display-only (SVG render) — message handlers and button scripts removed. Status bar click is disabled; usage details are visible via hover tooltip only.
 - **`[Metadata]` models.dev cache TTL reduced from 6 hours to 1 hour.** Detects provider API changes faster, reducing the window where stale metadata causes HTTP 400 errors. Mitigation for [#24](https://github.com/ltmoerdani/opencode-copilot-chat/issues/24).
 
 ### Documentation
 
 - Feature doc: `docs/features/07-20260615-model-validation-retry.md`
+- Feature doc: `docs/features/08-20260617-manual-usage-targets.md`
 
 Mitigates [#24](https://github.com/ltmoerdani/opencode-copilot-chat/issues/24).
 
