@@ -55,6 +55,7 @@ import {
 import {
   GoUsageTracker,
   formatGoUsageStatusBarText,
+  type UsageBaselineTargets,
 } from "./goUsageTracker";
 
 const SECRET_KEY = "opencodego.apiKey";
@@ -449,6 +450,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(goUsageLogChannel);
   goUsageTracker = new GoUsageTracker(context, (msg) => {
     goUsageLogChannel.appendLine(`[${new Date().toISOString()}] ${msg}`);
+  }, (modelId) => {
+    return modelMetadataSnapshot?.providers[GO_VENDOR]?.[modelId]?.cost;
   });
   ensureUsageStatusBar(context);
   ensureGoUsageStatusBar(context);
@@ -465,6 +468,14 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("opencodego.modelPickerDiagnostics", () => showModelPickerDiagnostics()),
     vscode.commands.registerCommand("opencodego.setThinkingEffort", () => showThinkingEffortPicker()),
     vscode.commands.registerCommand("opencodego.showUsageDetails", () => showUsageWebview(context)),
+    vscode.commands.registerCommand("opencodego.setUsageTargets", async () => {
+      if (!goUsageTracker) return;
+      const targets = await showUsageTargetEditor(goUsageTracker);
+      if (targets) {
+        goUsageTracker.setManualSpentTargets(targets);
+        vscode.window.showInformationMessage("OpenCode Go usage targets updated.");
+      }
+    }),
   ];
 
   // Agent-host providers for the Copilot Agents window (opt-in via config).
@@ -642,7 +653,7 @@ function ensureGoUsageStatusBar(context: vscode.ExtensionContext): void {
     vscode.StatusBarAlignment.Right,
     94,
   );
-  goUsageStatusBarItem.command = "opencodego.showUsageDetails";
+  // No command on status bar click — usage details only visible on hover via tooltip.
   context.subscriptions.push(goUsageStatusBarItem);
   refreshGoUsageStatusBar();
 }
@@ -669,7 +680,7 @@ function showUsageWebview(context: vscode.ExtensionContext): void {
     "OpenCode Usage Summary",
     vscode.ViewColumn.Beside,
     {
-      enableScripts: true,
+      enableScripts: false,
       retainContextWhenHidden: true
     }
   );
@@ -684,7 +695,6 @@ function showUsageWebview(context: vscode.ExtensionContext): void {
 function updateWebviewContent(): void {
   if (!usageWebviewPanel || !goUsageTracker) return;
   const s = goUsageTracker.getSummary();
-  const svg = buildUsageTooltipSvg(s);
 
   usageWebviewPanel.webview.html = `
     <!DOCTYPE html>
@@ -725,7 +735,7 @@ function updateWebviewContent(): void {
     </head>
     <body>
       <div class="container">
-        ${svg}
+        ${buildUsageTooltipSvg(s)}
       </div>
     </body>
     </html>
@@ -735,11 +745,110 @@ function updateWebviewContent(): void {
 function buildUsageTooltip(s: ReturnType<GoUsageTracker["getSummary"]>): vscode.MarkdownString {
   const md = new vscode.MarkdownString("", true);
   md.supportHtml = true;
+  md.isTrusted = true;
   md.appendMarkdown(
     `<img alt="OpenCode Go usage summary" src="${usageTooltipSvgDataUri(s)}" width="330">`,
   );
-
+  md.appendMarkdown(
+    "\n\n[$(pencil) Set spent targets](command:opencodego.setUsageTargets)"
+  );
   return md;
+}
+
+/**
+ * Show input boxes for the user to manually set Go usage targets.
+ * Returns UsageBaselineTargets if the user completed the flow, or undefined if cancelled.
+ */
+async function showUsageTargetEditor(
+  tracker: GoUsageTracker,
+): Promise<UsageBaselineTargets | undefined> {
+  const summary = tracker.getSummary();
+
+  // Ask for session spent (pre-filled with current tracked value)
+  const sessionStr = await vscode.window.showInputBox({
+    title: "OpenCode Go — Session Spent",
+    prompt: `Total spent in the 5-hour rolling window (limit: $12).`,
+    placeHolder: "e.g. 3.50",
+    value: summary.session.spent.toFixed(2),
+    validateInput: (value: string) => {
+      const n = parseFloat(value);
+      if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 3.50).";
+      if (n > 12) return "Session limit is $12. Enter a value between 0 and 12.";
+      return undefined;
+    },
+  });
+  if (sessionStr === undefined) return undefined;
+
+  // Ask for weekly spent (pre-filled)
+  const weeklyStr = await vscode.window.showInputBox({
+    title: "OpenCode Go — Weekly Spent",
+    prompt: `Total spent this week Mon–Mon UTC (limit: $30).`,
+    placeHolder: "e.g. 12.00",
+    value: summary.weekly.spent.toFixed(2),
+    validateInput: (value: string) => {
+      const n = parseFloat(value);
+      if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 12.00).";
+      if (n > 30) return "Weekly limit is $30. Enter a value between 0 and 30.";
+      return undefined;
+    },
+  });
+  if (weeklyStr === undefined) return undefined;
+
+  // Ask for monthly spent (pre-filled)
+  const monthlyStr = await vscode.window.showInputBox({
+    title: "OpenCode Go — Monthly Spent",
+    prompt: `Total spent this month (limit: $60).`,
+    placeHolder: "e.g. 25.00",
+    value: summary.monthly.spent.toFixed(2),
+    validateInput: (value: string) => {
+      const n = parseFloat(value);
+      if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 25.00).";
+      if (n > 60) return "Monthly limit is $60. Enter a value between 0 and 60.";
+      return undefined;
+    },
+  });
+  if (monthlyStr === undefined) return undefined;
+
+  // Ask for monthly reset day (1-31) — pre-filled
+  const monthlyDayStr = await vscode.window.showInputBox({
+    title: "OpenCode Go — Monthly Reset Day",
+    prompt: "Day of month when monthly usage resets (1-31). Press Enter to keep current.",
+    placeHolder: "e.g. 10",
+    value: summary.monthly.resetsAt.getUTCDate().toString(),
+    validateInput: (value: string) => {
+      if (!value) return undefined;
+      const n = parseInt(value, 10);
+      if (isNaN(n) || n < 1 || n > 31) return "Enter a day between 1 and 31.";
+      return undefined;
+    },
+  });
+  if (monthlyDayStr === undefined) return undefined;
+
+  // Ask for monthly reset hour (0-23 UTC) — pre-filled
+  const monthlyHourStr = await vscode.window.showInputBox({
+    title: "OpenCode Go — Monthly Reset Hour",
+    prompt: "Hour (UTC, 0-23) when monthly usage resets. Press Enter to keep current.",
+    placeHolder: "e.g. 0",
+    value: summary.monthly.resetsAt.getUTCHours().toString(),
+    validateInput: (value: string) => {
+      if (!value) return undefined;
+      const n = parseInt(value, 10);
+      if (isNaN(n) || n < 0 || n > 23) return "Enter an hour between 0 and 23 (UTC).";
+      return undefined;
+    },
+  });
+  if (monthlyHourStr === undefined) return undefined;
+
+  const monthlyAnchorDay = monthlyDayStr ? parseInt(monthlyDayStr, 10) : undefined;
+  const monthlyAnchorHour = monthlyHourStr ? parseInt(monthlyHourStr, 10) : undefined;
+
+  return {
+    session: parseFloat(sessionStr),
+    weekly: parseFloat(weeklyStr),
+    monthly: parseFloat(monthlyStr),
+    monthlyAnchorDay,
+    monthlyAnchorHour,
+  };
 }
 
 type _UsageSummary = ReturnType<GoUsageTracker["getSummary"]>;

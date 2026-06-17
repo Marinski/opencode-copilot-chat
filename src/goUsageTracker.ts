@@ -7,6 +7,9 @@ import { GO_VENDOR } from "./providerTypes";
 import type { ModelCost } from "./metadata";
 import type { TransportRequestSummary } from "./streaming";
 
+/** Callback to resolve live model cost from the models.dev metadata cache. */
+export type CostResolver = (modelId: string) => ModelCost | undefined;
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "opencodego.usageLog.v1";
@@ -23,7 +26,9 @@ const GO_LIMITS = {
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 const WEEK_MS       = 7 * 24 * 60 * 60 * 1000;
 
-// ─── Go model pricing ($/1M tokens) from https://opencode.ai/docs/go ────────
+// ─── Go model pricing ($/1M tokens) — bundled snapshot fallback ────────────
+// This table is a static snapshot kept as a last resort. The primary source
+// is the live models.dev metadata cache injected via CostResolver.
 
 const GO_MODEL_PRICING: Record<string, ModelCost> = {
   "glm-5.1":         { input: 1.40, output: 4.40,  cache_read: 0.26  },
@@ -94,10 +99,14 @@ interface UsageBaseline {
   monthly?: UsageBaselinePeriod;
 }
 
-interface UsageBaselineTargets {
+export interface UsageBaselineTargets {
   session: number;
   weekly: number;
   monthly: number;
+  /** Day of month (1-31) when monthly counter resets. Combined with monthlyAnchorHour. */
+  monthlyAnchorDay?: number;
+  /** Hour of day (0-23 UTC) when monthly counter resets. Combined with monthlyAnchorDay. */
+  monthlyAnchorHour?: number;
 }
 
 // ─── Time window helpers ─────────────────────────────────────────────────────
@@ -164,8 +173,10 @@ function estimateCost(
   completionTokens: number,
   cachedTokens: number,
   externalCost?: ModelCost,
+  liveCostResolver?: CostResolver,
 ): number {
-  const pricing = externalCost ?? GO_MODEL_PRICING[modelId];
+  // Priority: caller-provided cost > live models.dev snapshot > bundled table
+  const pricing = externalCost ?? liveCostResolver?.(modelId) ?? GO_MODEL_PRICING[modelId];
   if (!pricing) return 0;
 
   const billablePrompt = Math.max(0, promptTokens - cachedTokens);
@@ -226,13 +237,21 @@ export class GoUsageTracker {
   private entries: UsageLogEntry[] = [];
   private baseline: UsageBaseline = {};
   private readonly log?: (msg: string) => void;
+  private costResolver?: CostResolver;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     log?: (msg: string) => void,
+    costResolver?: CostResolver,
   ) {
     this.log = log;
+    this.costResolver = costResolver;
     this.restore();
+  }
+
+  /** Update the live cost resolver (e.g. after models.dev refresh). */
+  setCostResolver(resolver: CostResolver): void {
+    this.costResolver = resolver;
   }
 
   /** Record a completed Go request. externalCost is from resolved metadata if available. */
@@ -252,7 +271,7 @@ export class GoUsageTracker {
       return;
     }
 
-    const cost = estimateCost(summary.modelId, prompt, completion, cached, externalCost);
+    const cost = estimateCost(summary.modelId, prompt, completion, cached, externalCost, this.costResolver);
 
     this.log?.(`[go-tracker] RECORD: model=${summary.modelId} prompt=${prompt} completion=${completion} cached=${cached} cost=$${cost.toFixed(6)}`);
 
@@ -290,6 +309,7 @@ export class GoUsageTracker {
     const weekMs      = startOfUtcWeek(nowMs);
     const sessionStart = nowMs - FIVE_HOURS_MS;
 
+    // Use stored activation date as anchor; fall back to earliest row.
     const earliest = Math.min(...rows.map(r => r.createdMs));
     const monthStartMs = anchoredMonthStart(nowMs, earliest);
     const monthEndMs   = anchoredMonthEnd(monthStartMs, earliest);
@@ -320,6 +340,11 @@ export class GoUsageTracker {
       }
     }
 
+    // If a monthly baseline exists and is active, use its expiresAt for resetsAt.
+    const monthlyResetsAt = this.baseline.monthly
+      ? new Date(this.baseline.monthly.expiresAt)
+      : new Date(monthEndMs);
+
     return {
       session: {
         spent:    Math.round(sessionCost * 10000) / 10000,
@@ -337,7 +362,7 @@ export class GoUsageTracker {
         spent:    Math.round(monthlyCost * 10000) / 10000,
         limit:    GO_LIMITS.monthly,
         percent:  clamp(monthlyCost, GO_LIMITS.monthly),
-        resetsAt: new Date(monthEndMs),
+        resetsAt: monthlyResetsAt,
       },
       today: {
         cost:     Math.round(todayCost * 10000) / 10000,
@@ -403,6 +428,12 @@ export class GoUsageTracker {
 
     const weekEnd = weekMs + WEEK_MS;
 
+    // If a monthly baseline exists and is active, use its expiresAt for resetsAt
+    // instead of the anchor-based calculation (which ignores manual targets).
+    const monthlyResetsAt = this.baseline.monthly
+      ? new Date(this.baseline.monthly.expiresAt)
+      : new Date(monthEndMs);
+
     return {
       session: {
         spent:    Math.round(sessionCost * 10000) / 10000,
@@ -420,7 +451,7 @@ export class GoUsageTracker {
         spent:    Math.round(monthlyCost * 10000) / 10000,
         limit:    GO_LIMITS.monthly,
         percent:  clamp(monthlyCost, GO_LIMITS.monthly),
-        resetsAt: new Date(monthEndMs),
+        resetsAt: monthlyResetsAt,
       },
       today: {
         cost:     Math.round(todayCost * 10000) / 10000,
@@ -444,7 +475,6 @@ export class GoUsageTracker {
     const currentBaselineWeekly = this.getActiveBaselineAmount("weekly", nowMs);
     const currentBaselineMonthly = this.getActiveBaselineAmount("monthly", nowMs);
 
-    // Calculate tracked-only amounts from current displayed totals.
     const trackedSession = Math.max(0, summary.session.spent - currentBaselineSession);
     const trackedWeekly = Math.max(0, summary.weekly.spent - currentBaselineWeekly);
     const trackedMonthly = Math.max(0, summary.monthly.spent - currentBaselineMonthly);
@@ -461,6 +491,22 @@ export class GoUsageTracker {
       amount: Math.max(0, targets.monthly - trackedMonthly),
       expiresAt: summary.monthly.resetsAt.getTime(),
     };
+
+    // Override monthly expiry if caller provided anchor day + hour.
+    if (targets.monthlyAnchorDay && targets.monthlyAnchorDay >= 1 && targets.monthlyAnchorDay <= 31) {
+      const hour = targets.monthlyAnchorHour ?? 0;
+      const now = new Date(nowMs);
+      let year = now.getUTCFullYear();
+      let month = now.getUTCMonth();
+      let candidate = Date.UTC(year, month, targets.monthlyAnchorDay, hour, 0, 0, 0);
+      if (candidate <= nowMs) {
+        // If the anchor day+hour has passed this month, next reset is next month.
+        month++;
+        if (month > 11) { year++; month = 0; }
+        candidate = Date.UTC(year, month, targets.monthlyAnchorDay, hour, 0, 0, 0);
+      }
+      this.baseline.monthly.expiresAt = candidate;
+    }
 
     this.persistBaseline();
   }
