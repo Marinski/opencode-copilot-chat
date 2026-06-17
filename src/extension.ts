@@ -54,6 +54,7 @@ import {
 } from "./usage";
 import {
   GoUsageTracker,
+  GO_LIMITS,
   formatGoUsageStatusBarText,
   type UsageBaselineTargets,
 } from "./goUsageTracker";
@@ -746,6 +747,8 @@ function buildUsageTooltip(s: ReturnType<GoUsageTracker["getSummary"]>): vscode.
   const md = new vscode.MarkdownString("", true);
   md.supportHtml = true;
   md.isTrusted = true;
+  // supportedCommands is a proposed API — cast to bypass type check.
+  (md as any).supportedCommands = ["opencodego.setUsageTargets"];
   md.appendMarkdown(
     `<img alt="OpenCode Go usage summary" src="${usageTooltipSvgDataUri(s)}" width="330">`,
   );
@@ -767,13 +770,13 @@ async function showUsageTargetEditor(
   // Ask for session spent (pre-filled with current tracked value)
   const sessionStr = await vscode.window.showInputBox({
     title: "OpenCode Go — Session Spent",
-    prompt: `Total spent in the 5-hour rolling window (limit: $12).`,
+    prompt: `Total spent in the 5-hour rolling window (limit: $${GO_LIMITS.session}).`,
     placeHolder: "e.g. 3.50",
     value: summary.session.spent.toFixed(2),
     validateInput: (value: string) => {
       const n = parseFloat(value);
       if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 3.50).";
-      if (n > 12) return "Session limit is $12. Enter a value between 0 and 12.";
+      if (n > GO_LIMITS.session) return `Session limit is $${GO_LIMITS.session}. Enter a value between 0 and ${GO_LIMITS.session}.`;
       return undefined;
     },
   });
@@ -782,13 +785,13 @@ async function showUsageTargetEditor(
   // Ask for weekly spent (pre-filled)
   const weeklyStr = await vscode.window.showInputBox({
     title: "OpenCode Go — Weekly Spent",
-    prompt: `Total spent this week Mon–Mon UTC (limit: $30).`,
+    prompt: `Total spent this week Mon–Mon UTC (limit: $${GO_LIMITS.weekly}).`,
     placeHolder: "e.g. 12.00",
     value: summary.weekly.spent.toFixed(2),
     validateInput: (value: string) => {
       const n = parseFloat(value);
       if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 12.00).";
-      if (n > 30) return "Weekly limit is $30. Enter a value between 0 and 30.";
+      if (n > GO_LIMITS.weekly) return `Weekly limit is $${GO_LIMITS.weekly}. Enter a value between 0 and ${GO_LIMITS.weekly}.`;
       return undefined;
     },
   });
@@ -797,13 +800,13 @@ async function showUsageTargetEditor(
   // Ask for monthly spent (pre-filled)
   const monthlyStr = await vscode.window.showInputBox({
     title: "OpenCode Go — Monthly Spent",
-    prompt: `Total spent this month (limit: $60).`,
+    prompt: `Total spent this month (limit: $${GO_LIMITS.monthly}).`,
     placeHolder: "e.g. 25.00",
     value: summary.monthly.spent.toFixed(2),
     validateInput: (value: string) => {
       const n = parseFloat(value);
       if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 25.00).";
-      if (n > 60) return "Monthly limit is $60. Enter a value between 0 and 60.";
+      if (n > GO_LIMITS.monthly) return `Monthly limit is $${GO_LIMITS.monthly}. Enter a value between 0 and ${GO_LIMITS.monthly}.`;
       return undefined;
     },
   });

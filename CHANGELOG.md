@@ -4,7 +4,12 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ## [Unreleased]
 
-_No changes yet._
+### Fixed
+
+- **`[Usage]` Session/weekly targets now apply correctly.** Previously, editing session or weekly spent values could silently fail when the baseline had already been zeroed by a prior edit (the delta calculation resulted in a negative value clamped to 0). Session and weekly baselines are now set to the absolute target value, so editing always reflects the user's input. Monthly continues to use delta-based calculation to preserve the anchor expiry logic.
+- **`[Usage]` Removed dead `setCostResolver()` method.** The `CostResolver` is injected via constructor closure and never updated after initialization — the setter was unreachable code.
+- **`[Usage]` Validation limits now derive from `GO_LIMITS`.** Input box validation for session ($12), weekly ($30), and monthly ($60) limits now reads from the exported `GO_LIMITS` constant instead of hardcoded numbers, preventing drift if limits change.
+- **`[Usage]` Tooltip command link now uses `supportedCommands`.** Added `md.supportedCommands = ["opencodego.setUsageTargets"]` to the usage tooltip so the `[$(pencil) Set spent targets]` link renders as a clickable command in all VS Code versions.
 
 ## [0.3.3] — 2026-06-17
 

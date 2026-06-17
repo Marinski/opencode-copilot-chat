@@ -17,7 +17,7 @@ const BASELINE_STORAGE_KEY = "opencodego.usageBaseline.v1";
 const MAX_LOG_ENTRIES = 2000;
 
 /** OpenCode Go subscription limits in USD, from https://opencode.ai/docs/go */
-const GO_LIMITS = {
+export const GO_LIMITS = {
   session: 12,   // $12 per rolling 5-hour window
   weekly:  30,   // $30 per week (Mon–Mon UTC)
   monthly: 60,   // $60 per month (anchor-based)
@@ -249,11 +249,6 @@ export class GoUsageTracker {
     this.restore();
   }
 
-  /** Update the live cost resolver (e.g. after models.dev refresh). */
-  setCostResolver(resolver: CostResolver): void {
-    this.costResolver = resolver;
-  }
-
   /** Record a completed Go request. externalCost is from resolved metadata if available. */
   record(summary: TransportRequestSummary, externalCost?: ModelCost): void {
     const displayNameLower = summary.providerDisplayName.toLowerCase();
@@ -471,22 +466,20 @@ export class GoUsageTracker {
     const nowMs = Date.now();
     const summary = this.getSummary();
 
-    const currentBaselineSession = this.getActiveBaselineAmount("session", nowMs);
-    const currentBaselineWeekly = this.getActiveBaselineAmount("weekly", nowMs);
     const currentBaselineMonthly = this.getActiveBaselineAmount("monthly", nowMs);
-
-    const trackedSession = Math.max(0, summary.session.spent - currentBaselineSession);
-    const trackedWeekly = Math.max(0, summary.weekly.spent - currentBaselineWeekly);
     const trackedMonthly = Math.max(0, summary.monthly.spent - currentBaselineMonthly);
 
+    // Session & weekly: absolute targets — the display should show exactly
+    // what the user entered, regardless of tracked entries or prior baselines.
     this.baseline.session = {
-      amount: Math.max(0, targets.session - trackedSession),
+      amount: Math.max(0, targets.session),
       expiresAt: summary.session.resetsAt.getTime(),
     };
     this.baseline.weekly = {
-      amount: Math.max(0, targets.weekly - trackedWeekly),
+      amount: Math.max(0, targets.weekly),
       expiresAt: summary.weekly.resetsAt.getTime(),
     };
+    // Monthly: baseline fills the gap between tracked entries and the target.
     this.baseline.monthly = {
       amount: Math.max(0, targets.monthly - trackedMonthly),
       expiresAt: summary.monthly.resetsAt.getTime(),
