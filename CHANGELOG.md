@@ -4,9 +4,15 @@ All notable changes to the **OpenCode Go BYOK Provider** extension are documente
 
 ## [Unreleased]
 
+### Added
+
+- **`[Usage]` Status bar click opens usage QuickPick.** Clicking the OpenCode Go usage status bar item now opens a QuickPick with session/weekly/monthly progress bars, usage percentages, and reset countdowns. Includes quick actions to "Set spent targets…" and "Open full usage panel". Previously, status bar was hover-only with no click behavior.
+
 ### Fixed
 
-- **`[Usage]` Session/weekly targets now apply correctly.** Previously, editing session or weekly spent values could silently fail when the baseline had already been zeroed by a prior edit (the delta calculation resulted in a negative value clamped to 0). Session and weekly baselines are now set to the absolute target value, so editing always reflects the user's input. Monthly continues to use delta-based calculation to preserve the anchor expiry logic.
+- **`[Usage]` Baseline editing now correctly recalculates on re-edit.** The `setManualSpentTargets()` function now computes `baseline = target - tracked` (without clamping to 0) for all three periods. This allows **negative baselines** that offset tracked entries downward, so `display = tracked + baseline = target` exactly. Previously, `Math.max(0, ...)` prevented negative baselines — when a user lowered a target below the tracked amount, the display never updated because the delta clamped to 0. Also, session and weekly now use delta-based calculation (same as monthly) instead of absolute target injection, ensuring consistency and proper expiry behavior.
+- **`[Usage]` Input validation rejects non-numeric characters.** The usage target editor now validates input with a strict regex (`/^-?\d+[.,]?\d*$/`) that rejects strings like `60f` or `18asd` (which `parseFloat` would partially accept). Accepts both `.` and `,` as decimal separators for international users.
+- **`[Usage]` Status bar tooltip refreshes immediately after editing targets.** `refreshGoUsageStatusBar()` is now called right after `setManualSpentTargets()` so the hover tooltip updates without requiring a VS Code window reload.
 - **`[Usage]` Removed dead `setCostResolver()` method.** The `CostResolver` is injected via constructor closure and never updated after initialization — the setter was unreachable code.
 - **`[Usage]` Validation limits now derive from `GO_LIMITS`.** Input box validation for session ($12), weekly ($30), and monthly ($60) limits now reads from the exported `GO_LIMITS` constant instead of hardcoded numbers, preventing drift if limits change.
 - **`[Usage]` Tooltip command link now uses `supportedCommands`.** Added `md.supportedCommands = ["opencodego.setUsageTargets"]` to the usage tooltip so the `[$(pencil) Set spent targets]` link renders as a clickable command in all VS Code versions.

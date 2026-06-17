@@ -466,22 +466,29 @@ export class GoUsageTracker {
     const nowMs = Date.now();
     const summary = this.getSummary();
 
+    // For all periods: baseline = target - tracked. This can be negative
+    // (offsetting tracked entries downward) or positive (adding to tracked).
+    // Display = tracked + baseline = tracked + (target - tracked) = target.
+    // When the window rolls (5h session, Mon weekly, anchor monthly),
+    // expiresAt triggers, baseline is cleared, and display resets to 0.
+    const currentBaselineSession = this.getActiveBaselineAmount("session", nowMs);
+    const currentBaselineWeekly = this.getActiveBaselineAmount("weekly", nowMs);
     const currentBaselineMonthly = this.getActiveBaselineAmount("monthly", nowMs);
+
+    const trackedSession = Math.max(0, summary.session.spent - currentBaselineSession);
+    const trackedWeekly = Math.max(0, summary.weekly.spent - currentBaselineWeekly);
     const trackedMonthly = Math.max(0, summary.monthly.spent - currentBaselineMonthly);
 
-    // Session & weekly: absolute targets — the display should show exactly
-    // what the user entered, regardless of tracked entries or prior baselines.
     this.baseline.session = {
-      amount: Math.max(0, targets.session),
+      amount: targets.session - trackedSession,
       expiresAt: summary.session.resetsAt.getTime(),
     };
     this.baseline.weekly = {
-      amount: Math.max(0, targets.weekly),
+      amount: targets.weekly - trackedWeekly,
       expiresAt: summary.weekly.resetsAt.getTime(),
     };
-    // Monthly: baseline fills the gap between tracked entries and the target.
     this.baseline.monthly = {
-      amount: Math.max(0, targets.monthly - trackedMonthly),
+      amount: targets.monthly - trackedMonthly,
       expiresAt: summary.monthly.resetsAt.getTime(),
     };
 

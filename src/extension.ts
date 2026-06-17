@@ -56,6 +56,7 @@ import {
   GoUsageTracker,
   GO_LIMITS,
   formatGoUsageStatusBarText,
+  buildUsageQuickPickItems,
   type UsageBaselineTargets,
 } from "./goUsageTracker";
 
@@ -474,7 +475,28 @@ export function activate(context: vscode.ExtensionContext) {
       const targets = await showUsageTargetEditor(goUsageTracker);
       if (targets) {
         goUsageTracker.setManualSpentTargets(targets);
+        refreshGoUsageStatusBar(); // Update tooltip immediately
         vscode.window.showInformationMessage("OpenCode Go usage targets updated.");
+      }
+    }),
+    vscode.commands.registerCommand("opencodego.showUsageQuickPick", async () => {
+      if (!goUsageTracker) return;
+      const summary = goUsageTracker.getSummary();
+      const items = buildUsageQuickPickItems(summary);
+      const separator: vscode.QuickPickItem = { label: "", kind: vscode.QuickPickItemKind.Separator };
+      const setTargetItem: vscode.QuickPickItem & { _action?: string } = { label: "$(edit) Set spent targets…", _action: "setUsageTargets" };
+      const panelItem: vscode.QuickPickItem & { _action?: string } = { label: "$(graph) Open full usage panel", _action: "showUsageDetails" };
+      items.push(separator, setTargetItem, panelItem);
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: "OpenCode Go — Current Usage",
+        title: "Usage Summary",
+      });
+      if (!picked || !("_action" in picked)) return;
+      const action = (picked as typeof setTargetItem)._action;
+      if (action === "setUsageTargets") {
+        vscode.commands.executeCommand("opencodego.setUsageTargets");
+      } else if (action === "showUsageDetails") {
+        vscode.commands.executeCommand("opencodego.showUsageDetails");
       }
     }),
   ];
@@ -654,7 +676,7 @@ function ensureGoUsageStatusBar(context: vscode.ExtensionContext): void {
     vscode.StatusBarAlignment.Right,
     94,
   );
-  // No command on status bar click — usage details only visible on hover via tooltip.
+  goUsageStatusBarItem.command = "opencodego.showUsageQuickPick";
   context.subscriptions.push(goUsageStatusBarItem);
   refreshGoUsageStatusBar();
 }
@@ -762,6 +784,14 @@ function buildUsageTooltip(s: ReturnType<GoUsageTracker["getSummary"]>): vscode.
  * Show input boxes for the user to manually set Go usage targets.
  * Returns UsageBaselineTargets if the user completed the flow, or undefined if cancelled.
  */
+/** Parse a user-entered currency value. Accepts comma or dot as decimal separator.
+ *  Returns NaN if the string contains non-numeric characters beyond the decimal separator. */
+function parseCurrencyInput(value: string): number {
+  // Allow only digits, one comma or dot, and optional leading minus
+  if (!/^-?\d+[.,]?\d*$/.test(value)) return NaN;
+  return parseFloat(value.replace(",", "."));
+}
+
 async function showUsageTargetEditor(
   tracker: GoUsageTracker,
 ): Promise<UsageBaselineTargets | undefined> {
@@ -774,8 +804,8 @@ async function showUsageTargetEditor(
     placeHolder: "e.g. 3.50",
     value: summary.session.spent.toFixed(2),
     validateInput: (value: string) => {
-      const n = parseFloat(value);
-      if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 3.50).";
+      const n = parseCurrencyInput(value);
+      if (isNaN(n) || n < 0) return "Enter a valid number using digits and . or , as decimal separator (e.g. 3.50).";
       if (n > GO_LIMITS.session) return `Session limit is $${GO_LIMITS.session}. Enter a value between 0 and ${GO_LIMITS.session}.`;
       return undefined;
     },
@@ -789,8 +819,8 @@ async function showUsageTargetEditor(
     placeHolder: "e.g. 12.00",
     value: summary.weekly.spent.toFixed(2),
     validateInput: (value: string) => {
-      const n = parseFloat(value);
-      if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 12.00).";
+      const n = parseCurrencyInput(value);
+      if (isNaN(n) || n < 0) return "Enter a valid number using digits and . or , as decimal separator (e.g. 12.00).";
       if (n > GO_LIMITS.weekly) return `Weekly limit is $${GO_LIMITS.weekly}. Enter a value between 0 and ${GO_LIMITS.weekly}.`;
       return undefined;
     },
@@ -804,8 +834,8 @@ async function showUsageTargetEditor(
     placeHolder: "e.g. 25.00",
     value: summary.monthly.spent.toFixed(2),
     validateInput: (value: string) => {
-      const n = parseFloat(value);
-      if (isNaN(n) || n < 0) return "Enter a valid positive number (e.g. 25.00).";
+      const n = parseCurrencyInput(value);
+      if (isNaN(n) || n < 0) return "Enter a valid number using digits and . or , as decimal separator (e.g. 25.00).";
       if (n > GO_LIMITS.monthly) return `Monthly limit is $${GO_LIMITS.monthly}. Enter a value between 0 and ${GO_LIMITS.monthly}.`;
       return undefined;
     },
@@ -846,9 +876,9 @@ async function showUsageTargetEditor(
   const monthlyAnchorHour = monthlyHourStr ? parseInt(monthlyHourStr, 10) : undefined;
 
   return {
-    session: parseFloat(sessionStr),
-    weekly: parseFloat(weeklyStr),
-    monthly: parseFloat(monthlyStr),
+    session: parseCurrencyInput(sessionStr),
+    weekly: parseCurrencyInput(weeklyStr),
+    monthly: parseCurrencyInput(monthlyStr),
     monthlyAnchorDay,
     monthlyAnchorHour,
   };

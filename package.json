@@ -93,6 +93,10 @@
       {
         "command": "opencodego.setUsageTargets",
         "title": "OpenCode Go: Set Usage Targets…"
+      },
+      {
+        "command": "opencodego.showUsageQuickPick",
+        "title": "OpenCode Go: Show Usage Quick Pick"
       }
     ],
     "configuration": {
